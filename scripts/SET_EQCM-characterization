@@ -1,0 +1,15 @@
+# Input directives for EQCM characterization 
+Analysis  characterization     #  Characterization analysis 
+#software                      #  Acquisition software (optional)
+#Cycles                        #  Cycle range
+#V_to_Hz                       #  Transformation factor
+#sauerbrey                     #  Sauerbrey factor
+#quartz_freq                   #  Quartz frequency
+#Electrode_area                #  Electrode_area
+#scale_area                    #  factor to scale the area
+
+
+### Directives for filtering
+#endpoints_current             # points for FFT padding (current)
+#endpoints_mass_frequency      # points for FFT padding (mass\_frequency)
+#Filter_cutoff                 # Specification for the cutoff frequency (in units of Hz or 1/V) 

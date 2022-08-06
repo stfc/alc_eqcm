@@ -1,0 +1,6 @@
+#Input directives for mass calibration
+Analysis mass_calibration # Print mass frequency and charge
+#Software         # Acquisition software (optional)
+#scan_rate        # Voltage scan rate
+#current_offset  .# De-activate offset for EQCM current
+#V_to_Hz          # Voltage to Hz factor

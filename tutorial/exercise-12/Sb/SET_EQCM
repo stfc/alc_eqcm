@@ -1,0 +1,55 @@
+# Input directives for building atomistic models compatible with EQCM data
+# Building atomistic models compatible with EQCM cycles
+# Case: Electrodeposition of Sb on Pt
+
+Analysis model_cycled_sample  
+
+# Extract and analyse EQCM data
+###############################
+Software Metrohm                # Acquisition software (optional)
+V_to_Hz 200.0                   # Transformation factor
+Sauerbrey -0.0566 Hz ng-1 cm2   # Sauerbrey factor
+Quartz_freq 5.0 MHz             # Quartz frequency
+electrode_area 1.327 cm2        # Electrode area
+scan_rate 0.05 V s-1            # scan rate   
+
+# Directive for stoichiometric analysis
+#######################################
+process  electrodeposition
+current_offset .True. 
+
+#Stoichiometric species
+&block_species
+number_species 2
+Pt   195.084 2.0 1.0 fixed
+Sb   121.76  3.0 0.0 independent 
+&end_block_species
+
+
+#Directives for building atomisitc models
+#########################################
+input_model_format   xyz
+output_model_format  cp2k 
+
+&block_input_cell
+   8.4127491975030004    0.0000000000000000    0.0000000000000000
+  -4.2063745987515002    7.2856545207045000    0.0000000000000000
+   0.0000000000000000    0.0000000000000000 100.0000000000000000	
+&end_block_input_cell
+
+&Block_Species_Components
+  #Pt
+    Pt    1  crystal
+    Pt    Pt  1  
+  #Sb
+    Sb     1  atom
+    Sb  Sb 1  
+&End_Block_Species_COMPONENTS
+
+&block_input_composition
+tags    Pt Sb 
+amounts 45  0   
+&end_block_input_composition
+
+normal_vector c3
+distance_cutoff 2.2 Angstrom

@@ -1,0 +1,118 @@
+# Input directives for building atomistic models consistent with EQCM data 
+# Case: Intercalation/De-intercalation of K ions into/from a (NiOH)2 host 
+#       K+, H2O and H+ participate in the reaction 
+# 
+
+# Extract and analyse EQCM data
+###############################
+Software            CH-Inst                    # Acquisition software (optional)
+Analysis            Model_cycled_sample        # Model cycled samples 
+Sauerbrey          -0.146455224  Hz ng-1 cm2   # Sauerbrey factor
+Electrode_area      0.19625 cm2                # Electrode area
+Quartz_freq         8.0 MHz                    # Quartz frequency
+scan_rate           5.0 mV s-1                 # Scan rate for voltage sweep
+
+
+# Directive for stoichiometric analysis
+#######################################
+process            intercalation               # Type of process 
+efficiency         1.00                        # Efficiency of the process   
+current_offset    .True.                       # Correction of zero-voltage current offset 
+delta_stoich      0.001                       # Discretization of the stoichiometric space
+electrode_mass    6.80988E-06 g                # Mass of pristine electrode 
+
+#Stoichiometric species
+&Block_Species
+  number_species      4                        # Number of species
+# Name   Weight       Oxidation   s0   Type of variable
+  NiO2   90.692       0.0         1.0  fixed     
+  H2O    18.015       0.0         1.0  dependent
+  K+     39.0983      1.0         0.0  dependent
+  H+      1.008       1.0         2.0  independent
+&End_Block_Species
+
+
+# Directive for building atomistic models
+#########################################
+&Block_Species_Components
+ # NiO2
+   NiO2  2  crystal
+   Ni Ni 1 || Oh  O  2
+  #Water
+   H2O   2  molecule  1.2
+   Ow  O  1 ||  Hw H  2 
+  #K+
+   K+    1  atom
+   K+ K 1
+  #H+
+   H+    1  atom
+   H+ H  1
+&End_Block_Species_COMPONENTS
+
+&Block_input_composition
+tags    Ni Oh  H+ Ow Hw  K+
+amounts 12 24 24  10  20  0
+&End_block_input_composition
+
+input_model_format   vasp
+output_model_format  vasp
+
+targeted_num_models  8
+distance_cutoff 1.80 Angstrom
+repeat_input_model 3  2  2
+
+# Directives for setting simulations files
+##########################################
+&block_simulation_settings
+  simulation_type  relax_geometry
+  theory_level DFT
+
+  ### DFT directives
+  &DFT_settings
+    XC_level         GGA
+    XC_version       PBEsol
+    spin_polarised  .True.
+    smearing  Gaussian
+    width_smear  0.1  eV
+    scf_steps         100
+    energy_cutoff     550.0   eV
+    scf_energy_tolerance 0.0001 eV
+    kpoints         MPack  1  1  1
+    precision    normal
+    npar 4 
+    kpar 1
+
+    max_l_orbital    2
+    &magnetization
+     tags    Ni   Oh   H+   Ow   Hw   K+
+     values  3.0  0.0  0.0  0.0  0.0  0.0
+    &end_magnetization
+
+    &hubbard
+      tags      Ni   Oh   H+   Ow   Hw    K+
+     l_orbital   2   1    0     1   0     0
+        U       6.0  0.0  0.0  0.0  0.0  0.0
+        J       1.1  0.0  0.0  0.0  0.0  0.0
+    &end_hubbard
+
+   &pseudo_potentials
+     Ni   POTCAR_Ni
+     K+   POTCAR_K
+     Oh   POTCAR_O
+     H+   POTCAR_H
+     Ow   POTCAR_O
+     Hw   POTCAR_H
+   &end_pseudo_potentials
+
+  &end_DFT_settings
+
+  ### Motions for ions
+  &motion_settings
+    force_tolerance  0.01 eV  Angstrom-1
+    ion_steps         100
+    relax_method      CG
+    change_cell_volume  .False.
+    change_cell_shape   .True.
+  &end_motion_settings
+
+&end_block_simulation_settings

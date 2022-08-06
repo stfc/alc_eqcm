@@ -1,0 +1,39 @@
+# Input directives for building atomistic models of pristine samples 
+# Case: (NiOH)2 host. The content of intercalated water must be changed 
+
+Analysis            Model_pristine_sample         
+process            intercalation               # Type of process 
+
+#Stoichiometric species
+&Block_Species
+  number_species      3                        # Number of species
+# Name   Weight       Oxidation   s0   Type of variable
+  NiO2   90.692       0.0         1.0  fixed     
+  H+      1.008       1.0         2.0  fixed 
+  H2O    18.015       0.0         0.5 dependent
+&End_Block_Species
+
+
+# Directive for building atomistic models
+#########################################
+&Block_Species_Components
+  #NiO2
+   NiO2  2  crystal
+   Ni Ni 1 || Oh  O  2
+  #H+
+   H+    1  crystal 
+   H+ H  1
+  #Water
+   H2O   2  molecule  1.2
+   Ow  O  1 ||  Hw H  2 
+&End_Block_Species_COMPONENTS
+
+&Block_input_composition
+tags    Ni Oh H+ Ow Hw 
+amounts 12 24 24 0  0  
+&End_block_input_composition
+
+input_model_format   vasp
+output_model_format  vasp
+
+distance_cutoff 1.80 Angstrom

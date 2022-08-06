@@ -1,0 +1,8 @@
+# Input directives for noise filtering and printing
+# Electrodeposition of Ag on Au
+Software      QMC200                 # Acquisition software (optional)
+Analysis      print_EQCM_filter      # Filter and print data
+Sauerbrey     -0.0769231 Hz ng-1 cm2  # Sauerbrey factor
+Quartz_freq   5.0 MHz                # Quartz frequency
+Filter_cutoff 2.0 Hz                 # Specification for the cutoff frequency
+scan_rate     0.1 V s-1              # voltage scan rate

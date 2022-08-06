@@ -1,0 +1,9 @@
+# Input directives to print raw EQCM data
+Analysis  Print_EQCM_raw    # Integrated charge and total mass 
+#Software                    # Acquisition software (optional)
+#Sauerbrey                   # Sauerbrey factor
+#Quartz_freq                 # Quartz frequency
+#Cycles                      # Cycle range
+#voltage_range               # voltage range to print data 
+#V_to_Hz                     # Voltage to Hz factor  
+#first_cv_leg                # Only consider (or not) the first leg of the first CV cycle  

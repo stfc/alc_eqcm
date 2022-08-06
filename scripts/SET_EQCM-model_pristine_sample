@@ -1,0 +1,137 @@
+# Input directives for building an atomistic model for the pristine material with the
+# stoichiometry of &Block_Species (s0)
+
+Analysis            model_pristine_sample   # Stoichiometry analysis
+#Software           # Acquisition software (optional)
+
+# Directive for stoichiometric analysis
+#######################################
+#process                       # Type of process
+
+##Stoichiometric species
+#&Block_Species
+# number_species                     # Number of species
+### Name   Weight       Oxidation   s0   Type of variable
+#&End_Block_Species
+
+# Directive for building atomistic models
+#########################################
+#&Block_Species_Components
+#&End_Block_Species_components
+#
+#&Block_input_composition
+#&End_block_input_composition
+#
+#&Block_input_cell
+#&End_block_input_cell
+#
+#stoichiometry_error  
+#input_model_format   
+#output_model_format  
+#repeat_input_model   
+#targeted_num_models  
+#
+#distance_cutoff      
+#scale_cell
+#rotate_species
+#normal_vector
+#delta_space
+#
+## Directives for setting simulations files
+###########################################
+#&block_simulation_settings
+#  simulation_type    # (relax_geometry or MD) 
+#  theory_level       # level of theory to describe the interactomic interactions
+#  net_charge        
+#
+#  # DFT related settings (see manual for description)
+#  # ================================================
+#  &DFT_settings 
+#    XC_level 
+#    XC_version 
+#    vdw 
+#    smearing 
+#    width_smear 
+#    energy_cutoff 
+#    scf_steps 
+#    scf_energy_tolerance 
+#    bands 
+#    kpoints 
+#    precision    # (Only for VASP)
+#    npar         # (Only for VASP)
+#    kpar         # (Only for VASP)
+#    OT           # (Only for CP2K)
+#    EDFT         # (Only for CASTEP and ONETEP)
+#
+#    &ngwf        # (Compulsory only for ONETEP)
+#    &end_ngwf
+#
+#    spin_polarised   
+#    max_l_orbital         #(Only for VASP)
+#    total_magnetization    
+#
+#    &magnetization
+#    &end_magnetization
+#
+#    &hubbard
+#    &end_hubbard
+#
+#    &pseudo_potentials
+#    &end_pseudo_potentials
+#
+#    &basis_set      # (Only for CP2K)
+#    &end_basis_set
+#
+#  &end_DFT_settings
+#
+#  # Motion related directives
+#  # =========================
+#  &motion_settings
+#    ion_steps 
+#    change_cell_volume 
+#    change_cell_shape 
+#    #=== geometry relaxation
+#    relax_method String
+#    force_tolerance Real 
+#    #=== Molecular dynamics
+#    timestep 
+#    ensemble 
+#    temperature 
+#    pressure 
+#    thermostat 
+#    relax_time_thermostat 
+#    relax_time_barostat 
+#  &end_motion_DFT_settings
+#
+#  # Extra directives
+#  # ================
+#  &extra_directives
+#  &end_extra_directives
+#
+#&end_block_simulation_settings
+#
+## Directives for generating HPC scripts (see manual for description)
+#####################################################################
+#&block_HPC_settings
+#
+#  machine_name 
+#  platform 
+#  project_name 
+#  job_name 
+#  number_mpi_tasks 
+#  number_nodes 
+#  CPUs_per_node 
+#  memory_per_CPU 
+#  parallelism_type 
+#  threads_per_process 
+#  queue 
+#  time_limit 
+#  executable 
+#  mkl 
+#  exec_options 
+#
+#  &modules
+#  &end_modules
+#
+#&end_block_HPC_settings
+

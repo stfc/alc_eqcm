@@ -1,0 +1,147 @@
+##########################################################################
+#                      WELCOME TO ALC_EQCM                               #
+#  SCD/ALC program for Electrochemical analysis and atomistic modeling   #
+#  using Electrochemical Quartz Crystal Microbalance (EQCM) experiments  #
+#  version:  0.6                                                         #
+#  release:  Dec 2021                                                    #
+#                                                                        #
+#  Copyright:  Ada Lovelace Centre (ALC)                                 #
+#  Author: Ivan Scivetti (SCD-Physics)                                   #
+#                                                                        #
+#  Scientific/interfacilities support:                                   #
+#                            Gilberto Teobaldi (SCD-Physics)             #
+#  Experimental partners:                                                #
+#                            Sofia Diaz-Moreno (Diamond-Spectroscopy)    #
+#                            Paul Donaldson    (CLF-ULTRA)               #
+#                            Daniel Bowron (ISIS-Disordered Materials)   #
+#                                                                        #
+##########################################################################
+
+ Requested analysis: stoichiometry
+ ----------------------------------------------------------------------------------------
+ This option computes the stoichiometric related solutions from the accumulated charge
+ and mass, as well as the variables defined in &block_species. The outcome depends on
+ the type of process under consideration: "intercalation" or "electrodeposition".
+ ----------------------------------------------------------------------------------------
+
+ Relevant EQCM settings
+ ======================
+ EQCM software:      ch-inst
+ Scan rate:          0.0050 [V/s]
+ Electrode area:     0.196 [cm2]
+ Electrode mass:       6731.380  [ng]
+ Quartz frequency:   8.000 [MHz]
+ Sauerbrey factor:   -0.14646 [Hz ng-1 cm2]
+
+ EQCM analysis with raw data (no filtering)
+
+ ====================================================
+ === Type of physical process: intercalation
+ ====================================================
+ ALC_EQCM computes the set of stoichiometric solutions compatible with EQCM data.
+ If the solution is unequivocally defined, the algorithm provides stoichiometric
+ resolution as a function of the EQCM cycling.
+
+ ***IMPORTANT: Directive "cycles" (cycle range) has not been specified.
+    Thus, all CV cycles will be considered in the analysis.
+
+ Structure and details of EQCM data
+ ==================================
+ The code has detected  3 EQCM variables (columns) in file DATA_EQCM.
+ Description of the EQCM information provided by each column:
+ ----------------------------------
+ Column   |   Variable
+ ----------------------------------
+  1       |   voltage
+  2       |   current
+  3       |   mass-frequency
+ ----------------------------------
+
+ A total of  10 CV cycles have been identified from the EQCM data
+ -----------------------------------------------------------------
+ Cycle    Voltage sweep    Points    Voltage range [V]
+ -----------------------------------------------------------------
+   1       positive        450        0.000 -->   0.449
+           negative        450        0.450 -->   0.001
+   2       positive        450        0.000 -->   0.449
+           negative        450        0.450 -->   0.001
+   3       positive        450        0.000 -->   0.449
+           negative        450        0.450 -->   0.001
+   4       positive        450        0.000 -->   0.449
+           negative        450        0.450 -->   0.001
+   5       positive        450        0.000 -->   0.449
+           negative        450        0.450 -->   0.001
+   6       positive        450        0.000 -->   0.449
+           negative        450        0.450 -->   0.001
+   7       positive        450        0.000 -->   0.449
+           negative        450        0.450 -->   0.001
+   8       positive        450        0.000 -->   0.449
+           negative        450        0.450 -->   0.001
+   9       positive        450        0.000 -->   0.449
+           negative        450        0.450 -->   0.001
+  10       positive        450        0.000 -->   0.449
+           negative        450        0.450 -->   0.001
+ -----------------------------------------------------------------
+
+ Characterization analysis
+ =========================
+ Relevant computed quantities from the reported data
+ -----------------------------------------------------------------
+ Cycle     Process     Total charge [mC]     Mass change  [ng]
+ -----------------------------------------------------------------
+   1     oxidation                7.999              113.742
+         reduction               -8.068              -82.008
+   2     oxidation                7.983               88.534
+         reduction               -7.967              -74.343
+   3     oxidation                7.763               89.908
+         reduction               -7.791              -74.852
+   4     oxidation                7.532              100.422
+         reduction               -7.626              -87.870
+   5     oxidation                7.313              113.546
+         reduction               -7.391             -104.310
+   6     oxidation                7.122              125.552
+         reduction               -7.154             -113.884
+   7     oxidation                6.893              127.900
+         reduction               -6.952             -115.945
+   8     oxidation                6.671              123.601
+         reduction               -6.740             -113.991
+   9     oxidation                6.472              117.383
+         reduction               -6.540             -110.280
+  10     oxidation                6.297              109.040
+         reduction               -6.309             -105.800
+ -----------------------------------------------------------------
+
+ Print results to file ANALYSIS_EQCM/CHARACTERIZATION
+
+ Stoichiometry analysis
+ ======================
+ Molar mass of pristine electrode:         110.723 [g/mol]
+ Calculated moles:                           0.6079478E-07
+ Efficiency set for the reaction:            1.000
+ Moles that participate in the reaction:     0.6079478E-07
+
+ Species that characterise the reaction:     4
+ Species that participate in the reaction:   2
+
+ Summary of the information defined in &block_species:
+ ------------------------------------------------------------------------------------------------------
+      Species      Mass [g/mol]      Oxidation number      Pristine stoichiometry      Type of variable
+ ------------------------------------------------------------------------------------------------------
+         NiO2           90.692                   0.00                       1.000      fixed
+          H2O           18.015                   0.00                       1.000      fixed
+          Li+            6.940                   1.00                       0.000      dependent
+           H+            1.008                   1.00                       2.000      dependent
+ ------------------------------------------------------------------------------------------------------
+
+ Print stoichiometric solutions to files ANALYSIS_EQCM/INTERCALATION_OX and ANALYSIS_EQCM/INTERCALATION_RED
+
+ ==========================================
+ Total execution time =     0.366 seconds.
+ ==========================================
+
+ ###################################
+ #                                 #
+ #  Job has finished successfully  #
+ #  Thanks for using ALC_EQCM !!!  #
+ #                                 #
+ ###################################

@@ -1,0 +1,38 @@
+# Input directives for quantitative stoichiometry analysis consistent with EQCM data 
+
+# Extract and analyse EQCM data
+###############################
+Analysis            Stoichiometry              # Stoichiometry analysis 
+#Software           # Acquisition software (optional)
+#Sauerbrey          # Sauerbrey factor
+#Electrode_area     # Electrode area
+#Quartz_freq        # Quartz frequency
+#scan_rate          # Scan rate for voltage sweep
+#Electrode_area     #  Electrode_area
+#scale_area         #  factor to scale the area
+#V_to_Hz            # Voltage to Hz factor
+
+### Directives for filtering (in case the user decides to filter EQCM data)
+#endpoints_current             # points for FFT padding (current)
+#endpoints_mass_frequency      # points for FFT padding (mass\_frequency)
+#Filter_cutoff                 #  Specification for the cutoff frequency (in units of Hz or 1/V)
+
+# Directive for stoichiometric analysis
+#######################################
+#process                       # Type of process 
+#efficiency                    # Efficiency of the process   
+#current_offset                # Correction of zero-voltage current offset 
+#delta_stoich                  # Discretization of the stoichiometric space
+#electrode_mass                # Mass of pristine electrode 
+#electrode_moles               # Number of moles of the pristine electrode   
+#
+##Stoichiometric species
+#&Block_Species
+# number_species                     # Number of species
+### Name   Weight       Oxidation   s0   Type of variable
+#&End_Block_Species
+
+#Costraints
+#&Block_constraints_Species
+# number_constraints                            # Number of constraints
+#&End_Block_constraints_Species

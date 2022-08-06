@@ -1,0 +1,129 @@
+##########################################################################
+#                      WELCOME TO ALC_EQCM                               #
+#  SCD/ALC program for Electrochemical analysis and atomistic modeling   #
+#  using Electrochemical Quartz Crystal Microbalance (EQCM) experiments  #
+#  version:  0.6                                                         #
+#  release:  Dec 2021                                                    #
+#                                                                        #
+#  Copyright:  Ada Lovelace Centre (ALC)                                 #
+#  Author: Ivan Scivetti (SCD-Physics)                                   #
+#                                                                        #
+#  Scientific/interfacilities support:                                   #
+#                            Gilberto Teobaldi (SCD-Physics)             #
+#  Experimental partners:                                                #
+#                            Sofia Diaz-Moreno (Diamond-Spectroscopy)    #
+#                            Paul Donaldson    (CLF-ULTRA)               #
+#                            Daniel Bowron (ISIS-Disordered Materials)   #
+#                                                                        #
+##########################################################################
+
+ Requested analysis: stoichiometry
+ ----------------------------------------------------------------------------------------
+ This option computes the stoichiometric related solutions from the accumulated charge
+ and mass, as well as the variables defined in &block_species. The outcome depends on
+ the type of process under consideration: "intercalation" or "electrodeposition".
+ ----------------------------------------------------------------------------------------
+
+ Relevant EQCM settings
+ ======================
+ EQCM software:      metrohm
+ Electrode area:     1.327 [cm2]
+ Quartz frequency:   5.000 [MHz]
+ Sauerbrey factor:   -0.05660 [Hz ng-1 cm2]
+
+ EQCM analysis with raw data (no filtering)
+
+ ====================================================
+ === Type of physical process: electrodeposition
+ ====================================================
+ The implemented algorithm only allows a single species to be deposited/removed
+ onto/from the electrode surface. Results give the ratio between the effective
+ geometrical areas, as well the amount of moles of the species that participate
+ in the reaction. Species can be composed of multiple subspecies.
+ Each subspecies must contribute with the same number of moles.
+
+ ***IMPORTANT: Directive "cycles" (cycle range) has not been specified.
+    Thus, all CV cycles will be considered in the analysis.
+
+ Structure and details of EQCM data
+ ==================================
+ The code has detected  6 EQCM variables (columns) in file DATA_EQCM.
+ Description of the EQCM information provided by each column:
+ ----------------------------------
+ Column   |   Variable
+ ----------------------------------
+  1       |   voltage
+  2       |   current
+  3       |   charge
+  4       |   time
+  5       |   mass-frequency
+  6       |   resistance
+ ----------------------------------
+
+ A total of   6 CV cycles have been identified from the EQCM data
+ -----------------------------------------------------------------
+ Cycle    Voltage sweep    Points    Voltage range [V]
+ -----------------------------------------------------------------
+   1       negative        614        0.498 -->  -0.999
+           positive        656       -1.001 -->   0.598
+   2       negative        656        0.600 -->  -0.999
+           positive        656       -1.001 -->   0.598
+   3       negative        656        0.600 -->  -0.999
+           positive        656       -1.001 -->   0.598
+   4       negative        656        0.600 -->  -0.999
+           positive        656       -1.001 -->   0.598
+   5       negative        656        0.600 -->  -0.999
+           positive        656       -1.001 -->   0.598
+   6       negative         42        0.600 -->   0.500
+           undefined
+ -----------------------------------------------------------------
+ ***WARNING - Cycle    6  is NOT complete
+
+ Characterization analysis
+ =========================
+ ***IMPORTANT: Identified REDOX cycles from the input CV data (file DATA_EQCM):   5
+
+ Relevant computed quantities from the reported data
+ -----------------------------------------------------------------
+ Cycle     Process     Total charge [mC]     Mass change  [ng]
+ -----------------------------------------------------------------
+   1     reduction               -9.714             4417.732
+         oxidation                5.053            -2603.102
+   2     reduction               -9.799             3963.824
+         oxidation                2.767            -1207.750
+   3     reduction               -7.358             2580.063
+         oxidation                2.488             -808.506
+   4     reduction               -6.997             2215.162
+         oxidation                2.985             -947.311
+   5     reduction               -7.248             2183.680
+         oxidation                3.247             -974.500
+ -----------------------------------------------------------------
+
+ Print results to file ANALYSIS_EQCM/CHARACTERIZATION
+
+ Stoichiometry analysis
+ ======================
+
+ Species that characterise the reaction:     2
+ Species that participate in the reaction:   1
+
+ Summary of the information defined in &block_species:
+ ------------------------------------------------------------------------------------------------------
+      Species      Mass [g/mol]      Oxidation number      Pristine stoichiometry      Type of variable
+ ------------------------------------------------------------------------------------------------------
+           Pt          195.084                   2.00                       1.000      fixed
+           Sb          121.760                   3.00                       0.000      independent
+ ------------------------------------------------------------------------------------------------------
+
+ Print results to file ANALYSIS_EQCM/ELECTRO_DEPOSITION
+
+ ==========================================
+ Total execution time =     0.389 seconds.
+ ==========================================
+
+ ###################################
+ #                                 #
+ #  Job has finished successfully  #
+ #  Thanks for using ALC_EQCM !!!  #
+ #                                 #
+ ###################################

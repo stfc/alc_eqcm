@@ -1,0 +1,24 @@
+# Input directives for quantitative electrodeposition analysis consistent with EQCM data
+# Case: Electrodeposition of Sb on Pt
+
+# Extract and analyse EQCM data
+###############################
+Software Metrohm               # Acquisition software (optional)
+Analysis Stoichiometry         # Characterization of EQCM data
+V_to_Hz 200.0                  # Transformation factor
+Sauerbrey -0.0566 Hz ng-1 cm2  # Sauerbrey factor
+Quartz_freq 5.0 MHz            # Quartz frequency
+electrode_area 1.327 cm2       # Electrode area
+
+# Directive for stoichiometric analysis
+#######################################
+process  electrodeposition
+current_offset .True. 
+
+#Stoichiometric species
+&block_species
+number_species 2
+Pt   195.084 2.0 1.0 fixed
+Sb 121.76  3.0 0.0 independent 
+&end_block_species
+

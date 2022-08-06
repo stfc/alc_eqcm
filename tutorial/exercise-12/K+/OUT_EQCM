@@ -1,0 +1,21 @@
+##########################################################################
+#                      WELCOME TO ALC_EQCM                               #
+#  SCD/ALC program for Electrochemical analysis and atomistic modeling   #
+#  using Electrochemical Quartz Crystal Microbalance (EQCM) experiments  #
+#  version:  0.6                                                         #
+#  release:  Dec 2021                                                    #
+#                                                                        #
+#  Copyright:  Ada Lovelace Centre (ALC)                                 #
+#  Author: Ivan Scivetti (SCD-Physics)                                   #
+#                                                                        #
+#  Scientific/interfacilities support:                                   #
+#                            Gilberto Teobaldi (SCD-Physics)             #
+#  Experimental partners:                                                #
+#                            Sofia Diaz-Moreno (Diamond-Spectroscopy)    #
+#                            Paul Donaldson    (CLF-ULTRA)               #
+#                            Daniel Bowron (ISIS-Disordered Materials)   #
+#                                                                        #
+##########################################################################
+***ERROR in &block_species_components of SET_EQCM file
+Tag "Nirrkskk" for atomic component of species "NiO2" must have a maximum of 4 characters. Please use a different tag
+

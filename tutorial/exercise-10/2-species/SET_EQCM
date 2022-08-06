@@ -1,0 +1,29 @@
+# Input directives for quantitative stoichiometry analysis consistent with EQCM data 
+# Case: Intercalation/De-intercalation of Li ions into/from a (NiOH)2 host
+#       only Li+ and H+ participate in the reaction as dependent variables 
+
+# Extract and analyse EQCM data
+###############################
+Software            CH-Inst                    # Acquisition software (optional)
+Analysis            Stoichiometry              # Integrated charge and total mass 
+Sauerbrey          -0.146455224  Hz ng-1 cm2   # Sauerbrey factor
+Electrode_area      0.030418811 inch2          # Electrode area
+Quartz_freq         8.0 MHz                    # Quartz frequency
+scan_rate           5.0 mV s-1                 # Scan rate for voltage sweep
+
+# Directive for stoichiometric analysis
+#######################################
+process            intercalation               # Type of process 
+efficiency         1.00
+current_offset    .True.
+electrode_mass   6.73138E-06  g
+
+#Stoichiometric species
+&Block_Species
+  number_species      4                     # Number of species
+# Name   Weight       Oxidation   s0   Type of variable
+  NiO2   90.692       0.0         1.0  fixed     
+  H2O    18.015       0.0         1.0  fixed 
+  Li+     6.940       1.0         0.0  dependent
+  H+      1.008       1.0         2.0  dependent
+&End_Block_Species

@@ -1,0 +1,48 @@
+# Coating via electrodeposition:generation of a pristine structure 
+# Case: Al2O3 on Li_{0.91667}Mn_{2}O_{4} (coating)  
+
+Analysis model_pristine_sample  
+
+# Directive for stoichiometric analysis
+process  electrodeposition
+
+#Stoichiometric species
+&block_species
+number_species 5
+Li    6.941   0.0    0.9167 fixed
+Mn    54.94   0.0    2.0    fixed
+O     16.00   0.0    4.0    fixed
+AlO     42.98   0.0  0.25   independent 
+AlO2    58.98   0.0  0.25   independent
+&end_block_species
+
+input_model_format   vasp
+output_model_format  vasp 
+
+&Block_Species_Components
+  #Li
+    Li  1  crystal
+    Li Li 1 
+  # Mn
+    Mn  1 crystal
+    Mn Mn  1
+  # O
+    O  1  crystal
+    O  O   1
+  #AlO
+    AlO   2  molecule 2.1 
+    Al1   Al  1 ||  O1  O  1  
+  #AlO2
+    AlO2  2  molecule 2.1
+    Al2  Al 1    ||  O2  O  2 
+&End_Block_Species_COMPONENTS
+
+&block_input_composition
+tags     Li Mn O  Al1  O1  Al2  O2
+amounts  22 48 96  0    0    0   0  
+&end_block_input_composition	
+
+distance_cutoff 2.0 Angstrom
+repeat_input_model 2  2  1
+normal_vector c3
+

@@ -1,0 +1,11 @@
+# Input directives for computation of signal spectra
+Analysis  spectra            # Transform data to reciprocal space 
+#software                    # Acquisition software (optional)     
+#Cycles                      # Cycle range 
+#sauerbrey                   # Sauerbrey factor
+#v_to_Hz                     # Voltz to Hz factor
+#quartz_freq                 # Quartz frequency 
+
+### Directives for spectra analysis
+#endpoints_current           # points for FFT padding (current)
+#endpoints_mass_frequency    # points for FFT padding (mass\_frequency)

@@ -1,0 +1,40 @@
+# Input directives for quantitative stoichiom	etry analysis consistent with EQCM data 
+# Case: Intercalation/De-intercalation of K ions into/from a (NiOH)2 host 
+#       K+, H2O and H+ participate in the reaction 
+# Constraints: target_min  oxidation  H+  
+#              keep_ratio  reduction  d(H2O)|d(K+) 
+
+# Extract and analyse EQCM data
+###############################
+Software            CH-Inst                    # Acquisition software (optional)
+Analysis            Stoichiometry              # Integrated charge and total mass 
+Sauerbrey          -0.146455224  Hz ng-1 cm2   # Sauerbrey factor
+Electrode_area      0.19625 cm2                # Electrode area
+Quartz_freq         8.0 MHz                    # Quartz frequency
+scan_rate           5.0 mV s-1                 # Scan rate for voltage sweep
+
+
+# Directive for stoichiometric analysis
+#######################################
+process            intercalation               # Type of process 
+efficiency         1.00                        # Efficiency of the process   
+current_offset    .True.                       # Correction of zero-voltage current offset 
+delta_stoich      0.001                       # Discretization of the stoichiometric space
+electrode_mass    6.80988E-06 g                # Mass of pristine electrode 
+
+#Stoichiometric species
+&Block_Species
+  number_species      4                        # Number of species
+# Name   Weight       Oxidation   s0   Type of variable
+  NiO2   90.692       0.0         1.0  fixed     
+  H2O    18.015       0.0         1.0  dependent
+  K+     39.0983      1.0         0.0  dependent
+  H+      1.008       1.0         2.0  independent
+&End_Block_Species
+
+#Costraints
+&Block_constraints_Species
+ number_constraints  1                         # Number of constraints
+ target_min       oxidation  H+                # target minimum stoichiometry for H+ during oxidation
+# keep_ratio       reduction  d(H2O)|d(K+)     # keep the ratio between H2O and K+ (obtained from previous oxidation) during reduction 
+&End_Block_constraints_Species

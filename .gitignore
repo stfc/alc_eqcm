@@ -1,0 +1,9 @@
+manual/figures/*-converted-to.pdf
+manual/ALC_EQCM-manual.aux
+manual/ALC_EQCM-manual.bbl
+manual/ALC_EQCM-manual.blg
+manual/ALC_EQCM-manual.log
+manual/ALC_EQCM-manual.out
+manual/ALC_EQCM-manual.toc
+build-*
+test-*
