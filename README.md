@@ -1,7 +1,5 @@
-# ALC_EQCM
-
 ## About the code
-**ALC_EQCM** ALC_EQCM is a software for post-processing Electrochemical Quartz Crystal Microbalance (EQCM) data. The implemented functionalities allow quantitative characterization of electrochemical processes and interpretation of stoichiometric changes. This information is used to automatically generate atomistic models compatible with EQCM data, together with appropriate settings for atomistic level simulations of the derived models. These software capabilities constitute an alternative tool that aims to bridge the gap between experimental and computational research of complex electrochemical reactions.
+**ALC_EQCM** is a software for post-processing Electrochemical Quartz Crystal Microbalance (EQCM) data. The implemented functionalities allow quantitative characterization of electrochemical processes and interpretation of stoichiometric changes. This information is used to automatically generate atomistic models compatible with EQCM data, together with appropriate settings for atomistic level simulations of the derived models. These software capabilities constitute an alternative tool that aims to bridge the gap between experimental and computational research of complex electrochemical reactions.
 
 The development of this code started in April 2020 at the [Ada Lovelace Centre](https://adalovelacecentre.ac.uk/) (ALC) of the [Science and Technology Facilities Council](https://stfc.ukri.org/) (STFC). **ALC_EQCM** is a serial code written in modern Fortran according to the 2008 standards. Its structure for development and maintenance follows the Continuous Integration (CI) practice and it is integrated within the GitLab DevOps of the STFC.
 
@@ -32,9 +30,9 @@ ALC_EQCM contains the following set of files and folders (in italic-bold):
 ## Getting started
 The user with account *"username"* can clone the code locally (in machine *"wherever"*) by executing the following command
 ```sh
-username@wherever:/home/username/codes$ git clone git@gitlab.stfc.ac.uk:alc_eqcm/open-source.git alc_eqcm
+username@wherever:/home/username/codes$ git clone git@github.com:stfc/alc_eqcm.git
 ```
-where ***alc_eqcm*** is set as the root directory, but any other name can be chosen. This folder will have been created following the execution of the command above. Alternatively, the code can be downloaded from any of the available assets.  
+which generates the ***alc_eqcm*** folder as the root directory. Alternatively, the code can be downloaded from any of the available assets.  
 
 ### Depedencies
 The user must have access to the following software:  
