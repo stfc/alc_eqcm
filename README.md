@@ -28,11 +28,15 @@ ALC_EQCM contains the following set of files and folders (in italic-bold):
  * Gilberto Teobaldi 
 
 ## Getting started
-The user with account *"username"* can clone the code locally (in machine *"wherever"*) by executing the following command
+The user with account *"username"* can clone the code locally (in machine *"wherever"*) by executing the following command with the SSH protocol
 ```sh
 username@wherever:/home/username/codes$ git clone git@github.com:stfc/alc_eqcm.git
 ```
-which generates the ***alc_eqcm*** folder as the root directory. Alternatively, the code can be downloaded from any of the available assets.  
+Instead, if the user wants to use the HTTPS protocol it must execute
+```sh
+username@wherever:/home/username/codes$ git clone https://github.com/stfc/alc_eqcm.git
+```
+Both ways generate the ***alc_eqcm*** folder as the root directory. Alternatively, the code can be downloaded from any of the available assets.  
 
 ### Depedencies
 The user must have access to the following software:  
