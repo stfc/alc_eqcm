@@ -16,7 +16,7 @@ ALC_EQCM contains the following set of files and folders (in italic-bold):
 * [cmake_building.md](./cmake_building.md): details the steps to build, compile and run tests using the CMake platform.
 * [CMakeList.txt](./CMakeList.txt): sets the framework for code building and testing with CMake.
 * [LICENSE](./LICENSE): conditions for ALC_EQCM license.
-* [***manual***](./manual): folder with the user's manual.
+<!* [***manual***](./manual): folder with the user's manual.>
 * README.md: this file .
 * [***scripts***](./scripts): contains scripts for data processing and transformation of atomistic structures with the *.cif* format
 * [***source***](./source): contains the source code. Files have the *.F90* extension
