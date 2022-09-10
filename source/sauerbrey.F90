@@ -29,7 +29,7 @@ Module sauerbrey
   ! Sauerbrey type
   Type, Public :: sauer_type
     Private
-    ! Factor to transform mass frequency to mass/area 
+    ! Factor to transform mass-frequency to mass/area 
     Type(in_param_array),  Public               :: factor
     ! Maximum delta mass-frequency change
     Real(Kind=wp), Public                 :: max_Dmassfreq
@@ -86,7 +86,7 @@ Contains
 
    Subroutine sauerbrey_correlation(files, eqcm_data, system_data, sauer_data)
      !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-     ! Uses the mass frequency from input data, finds the maximum value and 
+     ! Uses the mass-frequency from input data, finds the maximum value and 
      ! checks the validity of the Sauerbrey equation 
      ! 
      ! author    - i.scivetti June 2020
@@ -97,7 +97,7 @@ Contains
      Type(sauer_type),    Intent(InOut) :: sauer_data     
 
      Real(Kind=wp)    :: ratio 
-     Character(Len = 256)  :: message
+     Character(Len = 256)  :: message, messages(2)
 
      ! Test sauerbrey condition
      If (.Not. (sauer_data%factor%fread) ) Then
@@ -114,17 +114,20 @@ Contains
      ratio = 100.0_wp * sauer_data%max_Dmassfreq/system_data%quartz_freq%value
 
      If (ratio > valid_limit) Then
-       Write (message,'(1x,a)') '***ERROR - Maximum value for mass-frequency is outside the&
-                              & range of validation for the Sauerbrey correlation. Z-match method is needed (not&
-                              & implemented yet). Check the input for the quartz frequency too.'
-       Call error_stop(message)
+       Write (messages(1),'(1x,a)') '***ERROR - Maximum variation for mass-frequency is larger than 2% of the fundametal&
+                              & frequency of the quartz crystal. This does not comply with the condition for the&  
+                              & Sauerbrey correlation.'
+       Write (messages(2),'(1x,a)') '   Make sure that the recorded data is be indeed analysed with the Sauerbrey model.& 
+                      & Otherwise, input mass must be provided by the user. Check also the input for the "quartz_freq" directive.'
+       Call info(messages, 2)               
+       Call error_stop(' ')
      End If
 
    End Subroutine sauerbrey_correlation
 
    Subroutine sauerbrey_transformation(eqcm_data, sauer_data)
      !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-     ! Transform mass-frequency to mass density using the Sauerbrey equation
+     ! Transform mass-frequency to mass-density using the Sauerbrey equation
      ! 
      ! author    - i.scivetti June 2020
      !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

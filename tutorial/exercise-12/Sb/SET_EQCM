@@ -18,6 +18,8 @@ scan_rate 0.05 V s-1            # scan rate
 process  electrodeposition
 current_offset .True. 
 
+multiple_output_atoms 3
+
 #Stoichiometric species
 &block_species
 number_species 2

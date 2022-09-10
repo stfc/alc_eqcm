@@ -211,6 +211,8 @@ Module atomistic_models
   ! Type for the modelling related variables 
   Type, Public :: model_type
     Private
+    ! Multiple for the amount of output_atom
+    Type(in_integer), Public :: multiple_output_atoms 
     ! Multiple for the amount of input_atoms
     Type(in_integer), Public :: multiple_input_atoms 
     ! Constrained dynamics
@@ -262,6 +264,8 @@ Module atomistic_models
     Real(Kind=wp)             ::  stoich_target(max_species, max_models)
     ! Reference stoichiometry
     Real(Kind=wp)             :: ref_stoich
+    ! Decide if the structure is shifted or not
+    Type(in_logic), Public    :: shift_structure
     ! Level where to start deposition from
     Type(in_param), Public    :: deposition_level
     ! Discretization of the spatial coordinates
@@ -376,7 +380,7 @@ Contains
     Character(Len=256)   :: message
 
     fail=0
-    T%sample%max_atoms=2*T%input_times*num_atoms  
+    T%sample%max_atoms=T%multiple_output_atoms%value*T%input_times*num_atoms  
 
     Allocate(T%sample%atom(T%sample%max_atoms),        Stat=fail(1))
     If (Any(fail > 0)) Then
@@ -513,7 +517,9 @@ Contains
      
     Call print_atomistic_settings(model_data)
     Call read_input_model(files, stoich_data, model_data)
-    Call shift_structure(model_data, process)
+    If (model_data%shift_structure%stat) Then
+      Call shift_structure(model_data, process)
+    End If
     Call check_cell_consistency(model_data)
     Call model_data%species_arrays(stoich_data)  
     Call compute_stoichiometry_input(stoich_data, model_data)
@@ -1720,21 +1726,27 @@ Contains
       exec_mv='mv '//Trim(files(FILE_KPOINTS)%filename)//' '//Trim(path)//'/KPOINTS'   
       Call execute_command_line(exec_mv)
       ! Generate POTCAR
-      exec_mv='mv POTCAR'//' '//Trim(path)//'/POTCAR'   
-      Call execute_command_line(exec_mv)
+      If (simulation_data%dft%pp_info%stat)Then
+        exec_mv='mv POTCAR'//' '//Trim(path)//'/POTCAR'   
+        Call execute_command_line(exec_mv)
+      End If
     !!!! CP2K
     Else If (Trim(fileformat)=='cp2k') Then
       ! Generated input.cp2k 
       exec_mv='mv '//Trim(files(FILE_SET_SIMULATION)%filename)//' '//Trim(path)//'/input.cp2k'
       Call execute_command_line(exec_mv)
       ! copy the potential
-      path_pp=Trim(FOLDER_DFT)//'/PPs/'//Trim(simulation_data%dft%pseudo_pot(1)%file_name)  
-      exec_cp='cp '//Trim(path_pp)//' '//Trim(path)
-      Call execute_command_line(exec_cp)
+      If (simulation_data%dft%pp_info%stat)Then
+        path_pp=Trim(FOLDER_DFT)//'/PPs/'//Trim(simulation_data%dft%pseudo_pot(1)%file_name)  
+        exec_cp='cp '//Trim(path_pp)//' '//Trim(path)
+        Call execute_command_line(exec_cp)
+      End If
       ! copy basis set 
-      path_pp=Trim(FOLDER_DFT)//'/BASIS_SET'
-      exec_cp='cp '//Trim(path_pp)//' '//Trim(path)
-      Call execute_command_line(exec_cp)
+      If (simulation_data%dft%basis_info%stat)Then
+        path_pp=Trim(FOLDER_DFT)//'/BASIS_SET'
+        exec_cp='cp '//Trim(path_pp)//' '//Trim(path)
+        Call execute_command_line(exec_cp)
+      End If
     !!!! CASTEP
     Else If (Trim(fileformat)=='castep') Then
       exec_mv='mv '//'model.param'//' '//Trim(path) 
@@ -1753,8 +1765,10 @@ Contains
       Call execute_command_line(exec_mv)
       exec_mv='mv '//'CI-onetep.dat'//' '//Trim(path) 
       Call execute_command_line(exec_mv)
-      exec_cp='cp DFT/PPs/* '//Trim(path)
-      Call execute_command_line(exec_cp)
+      If (simulation_data%dft%pp_info%stat) Then
+        exec_cp='cp DFT/PPs/* '//Trim(path)
+        Call execute_command_line(exec_cp)
+      End If
     End If
 
     ! If vdW correction uses kernel, copy the file
@@ -2304,6 +2318,7 @@ Contains
     Integer(Kind=wi) :: ind_at, ind_sp, isp 
     Integer(Kind=wi) :: ris(3)
     Real(Kind=wp)    :: shift(3)
+    Character(Len=256) :: messages(3)
 
     ris=model_data%repeat_input_model%value
     nat_extra=model_data%input%num_atoms_extra
@@ -2317,6 +2332,15 @@ Contains
     End Do
 
     ! Copy the first num_atoms_extra atoms
+    If (model_data%input%num_atoms_extra>model_data%sample%max_atoms) Then
+       Write (messages(1),'(1x,1a)') '***ERROR: the initial allocated dimensions for the maximum number of atoms&
+                                    & to generate models has been exceeded. '      
+       Write (messages(2),'(1x,1a)') '   The user must define a larger value for the "multiple_output_atoms"&
+                                    & directive, which is set to 2 by default.'
+       Write (messages(3),'(1x,1a)') '   Try first by increasing this directive to 5 first. Increase it more if needed'
+       Call info(messages, 3)
+       Call error_stop(' ')
+    End If            
     Do j =1 , model_data%input%num_atoms_extra
       model_data%sample%atom(j)=model_data%input%atom(j)      
     End Do
@@ -3087,7 +3111,7 @@ Contains
       Write (messages(1), '(1x,3a)') '***ERROR: folder ', Trim(FOLDER_INPUT_GEOM), ' cannot be found.'
       Write (messages(2), '(1x,3a)') 'This folder must contain file ', Trim(input_file),' and the xyz&
                                    & files only for the participant MOLECULAR species (if any).'
-      Write (messages(3), '(1x,a)') 'The requested analysis cannot be conducted. Pleased create the folder&
+      Write (messages(3), '(1x,a)') 'The requested analysis cannot be conducted. Please create the folder&
                                    & and add the required information.'
       Call info(messages, 3)
       Call error_stop(' ')
@@ -4431,27 +4455,29 @@ Contains
                                   simulation_data%dft%vdw_kernel_file, '&dft_settings', fsim)
              End If     
  
-            If (Trim(code_format)=='vasp') Then 
+            If (Trim(code_format)=='vasp') Then
               Call print_vasp_settings(files, model_data%sample%list%net_elements, model_data%sample%list%element,&
                                      & model_data%sample%list%tag, model_data%sample%list%N0, simulation_data)
               Call ammend_files(model_data%sample%path, files(FILE_SET_SIMULATION)%filename, 'INCAR', &
                                 & '&block_simulation_settings', fsim) 
+              Call execute_command_line('rm '//Trim(files(FILE_SET_SIMULATION)%filename))
               Call ammend_files(model_data%sample%path, files(FILE_KPOINTS)%filename, 'KPOINTS', &
-                                & '&dft_settings', fsim) 
-              Call ammend_files(model_data%sample%path, 'POTCAR', 'POTCAR', '&dft_settings', fsim)
-
-              ! Delete temporary files
-              Call execute_command_line('rm '//Trim(files(FILE_SET_SIMULATION)%filename)//' '//&
-                                               Trim(files(FILE_KPOINTS)%filename)//' '//&
-                                              'POTCAR') 
+                                & '&dft_settings', fsim)
+              Call execute_command_line('rm '//Trim(files(FILE_KPOINTS)%filename))
+              If (simulation_data%dft%pp_info%stat) Then           
+                Call ammend_files(model_data%sample%path, 'POTCAR', 'POTCAR', '&dft_settings', fsim)
+                Call execute_command_line('rm POTCAR')
+              End If
 
             Else If (Trim(code_format)=='cp2k') Then
               Call print_cp2k_settings(files, model_data%sample%list%net_elements, model_data%sample%list%element, & 
                                      & model_data%sample%list%tag, model_data%sample%list%N0, simulation_data)
               Call ammend_files(model_data%sample%path, files(FILE_SET_SIMULATION)%filename, 'input.cp2k', &
                                 & '&block_simulation_settings', fsim)
-              Call ammend_files(model_data%sample%path, Trim(FOLDER_DFT)//'/'//'BASIS_SET', 'BASIS_SET', &
+              If (simulation_data%dft%basis_info%stat)Then          
+                Call ammend_files(model_data%sample%path, Trim(FOLDER_DFT)//'/'//'BASIS_SET', 'BASIS_SET', &
                                 & '&dft_settings', fsim)
+              End If    
               ! Delete temporary files
               Call execute_command_line('rm '//Trim(files(FILE_SET_SIMULATION)%filename))
               ! Checking PPs
@@ -4466,7 +4492,8 @@ Contains
                       Call execute_command_line('[ -f '//Trim(Adjustl(model_data%sample%path))//'/'//Trim(pseudo_list(i))//&
                                  &' ]', exitstat=ifile) 
                       If (ifile /= 0) Then
-                        Write (messages(1), '(1x,a)') 'Updating PP file '//Trim(pseudo_list(i))//' according to new specifications'
+                        Write (messages(1), '(1x,a)') 'Generating PP file '//Trim(pseudo_list(i))//&
+                                                     &' according to new specifications'
                         Call info(messages, 1)
                         Call execute_command_line('cp DFT/PPs/'//Trim(pseudo_list(i))//' '//Trim(Adjustl(model_data%sample%path)))
                         fsim=.True.
@@ -4498,9 +4525,10 @@ Contains
                       pseudo_list(i)= Trim(simulation_data%dft%pseudo_pot(j)%file_name)
                       loop_pp=.False.
                       Call execute_command_line('[ -f '//Trim(Adjustl(model_data%sample%path))//'/'//Trim(pseudo_list(i))//&
-                                 &' ]', exitstat=ifile) 
+                                 &' ]', exitstat=ifile)
                       If (ifile /= 0) Then
-                        Write (messages(1), '(1x,a)') 'Updating PP file '//Trim(pseudo_list(i))//' according to new specifications'
+                        Write (messages(1), '(1x,a)') 'Generating PP file '//Trim(pseudo_list(i))//&
+                                                    & ' according to new specifications'
                         Call info(messages, 1)
                         Call execute_command_line('cp DFT/PPs/'//Trim(pseudo_list(i))//' '//Trim(Adjustl(model_data%sample%path)))
                         fsim=.True.
@@ -4532,7 +4560,8 @@ Contains
                       Call execute_command_line('[ -f '//Trim(Adjustl(model_data%sample%path))//'/'//Trim(pseudo_list(i))//&
                                  &' ]', exitstat=ifile) 
                       If (ifile /= 0) Then
-                        Write (messages(1), '(1x,a)') 'Updating PP file '//Trim(pseudo_list(i))//' according to new specifications'
+                        Write (messages(1), '(1x,a)') 'Generating PP file '//Trim(pseudo_list(i))//&
+                                                    & ' according to new specifications'
                         Call info(messages, 1)
                         Call execute_command_line('cp DFT/PPs/'//Trim(pseudo_list(i))//' '//Trim(Adjustl(model_data%sample%path)))
                         fsim=.True.
@@ -4592,8 +4621,12 @@ Contains
       Call info(messages, 1)
     End If
 
-  End Subroutine generate_hpc_simulation_files
+    If (simulation_data%generate) Then
+      ! Print warnings
+      Call warning_simulation_settings(simulation_data)
+    End If
 
+  End Subroutine generate_hpc_simulation_files
 
   Subroutine check_record_file(io, filename)
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

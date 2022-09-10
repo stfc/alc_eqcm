@@ -111,8 +111,8 @@ Module stoichiometry
     ! number of mole of the host material for intercalation
     Real(Kind=wp), Allocatable         ::  mole(:)
     ! area ratio for oxidation/reduction
-    Real(Kind=wp), Allocatable         ::  area_ratio_ox(:)
-    Real(Kind=wp), Allocatable         ::  area_ratio_red(:)
+    Real(Kind=wp), Allocatable         ::  elec_depo_ratio_ox(:)
+    Real(Kind=wp), Allocatable         ::  elec_depo_ratio_red(:)
     ! number of mole of material to being electrodeposited
     Real(Kind=wp), Allocatable         ::  mole_ox(:)
     Real(Kind=wp), Allocatable         ::  mole_red(:)
@@ -294,12 +294,12 @@ Contains
       End If
       T%numsol=1
     Else If (Trim(process%type) == 'electrodeposition') Then
-      Allocate(T%mole_ox(cycles),          Stat=fail(1))
-      Allocate(T%mole_red(cycles),         Stat=fail(2))
-      Allocate(T%area_ratio_ox(cycles),    Stat=fail(3))
-      Allocate(T%area_ratio_red(cycles),   Stat=fail(4))
-      Allocate(T%solution_moles(2,cycles), Stat=fail(5))
-      Allocate(T%numsol(2,cycles),         Stat=fail(6))
+      Allocate(T%mole_ox(cycles),             Stat=fail(1))
+      Allocate(T%mole_red(cycles),            Stat=fail(2))
+      Allocate(T%elec_depo_ratio_ox(cycles),  Stat=fail(3))
+      Allocate(T%elec_depo_ratio_red(cycles), Stat=fail(4))
+      Allocate(T%solution_moles(2,cycles),    Stat=fail(5))
+      Allocate(T%numsol(2,cycles),            Stat=fail(6))
       If (Any(fail > 0)) Then
         Write (message,'(1x,1a)') '***ERROR: Allocation problems for extra stoichometric arrays (electrodeposition)'
         Call error_stop(message)
@@ -369,12 +369,12 @@ Contains
       Deallocate(T%mole_red) 
     End If
 
-    If (Allocated(T%area_ratio_ox)) Then
-      Deallocate(T%area_ratio_ox) 
+    If (Allocated(T%elec_depo_ratio_ox)) Then
+      Deallocate(T%elec_depo_ratio_ox) 
     End If
 
-    If (Allocated(T%area_ratio_red)) Then
-      Deallocate(T%area_ratio_red) 
+    If (Allocated(T%elec_depo_ratio_red)) Then
+      Deallocate(T%elec_depo_ratio_red) 
     End If
 
     If (Allocated(T%constraints)) Then
@@ -547,7 +547,7 @@ Contains
         ElseIf (Trim(eqcm_data%process%type) == 'electrodeposition') Then
           !Find which variables are dependent, independent and fixed, including contraints
           Call classify_variables(stoich_data)
-          Call electro_deposition(i, j, DM, DQ, stoich_data)
+          Call electro_deposition(i, j, DM, DQ, stoich_data, eqcm_data%mass_frequency%fread, eqcm_data%mass%fread)
         End If
         j=j+1
       End Do
@@ -555,7 +555,7 @@ Contains
     End Do
 
     If (Trim(eqcm_data%process%type) == 'electrodeposition') Then
-      Call print_deposition(stoich_data, files, redox_data%limit_cycles) 
+      Call print_deposition(stoich_data, files, redox_data%limit_cycles, eqcm_data%mass_frequency%fread, eqcm_data%mass%fread) 
     Else If (Trim(eqcm_data%process%type) == 'intercalation') Then
       If (.Not. stoich_data%sol_exist) Then
          ferror=.True.
@@ -1511,28 +1511,36 @@ Contains
 
   End Subroutine print_pristine_stoichiometry
 
-  Subroutine print_deposition(stoich_data, files, icycle)
+  Subroutine print_deposition(stoich_data, files, icycle, record_mass_freq, record_mass)
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     ! Print ELECTRODEPOSITION file
     ! 
     ! author    - i.scivetti Nov 2020
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    Type(stoich_type),    Intent(InOut) :: stoich_data
-    Type(file_type),      Intent(InOut) :: files(:)
-    Integer(Kind=wi),     Intent(In   ) :: icycle 
+    Type(stoich_type), Intent(InOut) :: stoich_data
+    Type(file_type),   Intent(InOut) :: files(:)
+    Integer(Kind=wi),  Intent(In   ) :: icycle 
+    Logical,           Intent(In   ) :: record_mass_freq
+    Logical,           Intent(In   ) :: record_mass    
 
     Integer(Kind=wi) :: iunit, i
     Character(Len=256)  :: message
 
     Open(Newunit=files(FILE_ELECTRO)%unit_no, File=files(FILE_ELECTRO)%filename, Status='Replace')
     iunit=files(FILE_ELECTRO)%unit_no
-    Call info(' ', 1)
     Write (message,'(1x,2a)') 'Print results to file ', Trim(FOLDER_ANALYSIS)//'/'//Trim(files(FILE_ELECTRO)%filename)
-    Call info(message,1)
+    Call info(' ', 1)
+    If (record_mass) Then
+        Write (iunit,'(a,(*(a18,2x)))') '#Cycle', '[Dm(Q)/Dm_eff]_ox', '[Dm(Q)/Dm_eff]_red', 'mole_ox [nmol]', 'mole_red [nmol]'
+    Else
+      If (record_mass_freq) Then       
+        Write (iunit,'(a,(*(a18,2x)))') '#Cycle', 'A_eff/A_geom(ox)', 'A_eff/A_geom(red)', 'mole_ox [nmol]', 'mole_red [nmol]'
+      End If  
+    End If
 
-    Write (iunit,'(a,(*(a18,2x)))') '#Cycle', 'A_eff/A_geom(ox)', 'A_eff/A_geom(red)', 'mole_ox [nmol]', 'mole_red [nmol]'
+    Call info(message,1)
     Do i=1, icycle
-      Write (iunit,'(1x,i2,(*(f18.3,2x)))')  i, stoich_data%area_ratio_ox(i), stoich_data%area_ratio_red(i),&
+      Write (iunit,'(1x,i2,(*(f18.3,2x)))')  i, stoich_data%elec_depo_ratio_ox(i), stoich_data%elec_depo_ratio_red(i),&
                                             &  stoich_data%mole_ox(i)/1.0E-9, stoich_data%mole_red(i)/1.0E-9 
     End Do
 
@@ -1544,19 +1552,21 @@ Contains
   End Subroutine print_deposition
 
  
-  Subroutine electro_deposition(ic, jc, DM, DQ, stoich_data)
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  Subroutine electro_deposition(ic, jc, DM, DQ, stoich_data, record_mass_freq, record_mass)
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     ! Compute electrodeposition quantities
     ! 
     ! author    - i.scivetti Nov 2020
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     Integer(Kind=wi),  Intent(In   ) :: ic        
     Integer(Kind=wi),  Intent(In   ) :: jc       
     Real(Kind=wp),     Intent(In   ) :: DM       
     Real(Kind=wp),     Intent(In   ) :: DQ       
     Type(stoich_type), Intent(InOut) :: stoich_data
+    Logical,           Intent(In   ) :: record_mass_freq
+    Logical,           Intent(In   ) :: record_mass
 
-    Real(Kind=wp)      :: area_factor, mol, mtot, oxtot
+    Real(Kind=wp)      :: ratio, mol, mtot, oxtot, dMQ
     Character(Len=256) :: message
     Integer(Kind=wi)   ::  i 
 
@@ -1568,31 +1578,42 @@ Contains
       oxtot=oxtot+stoich_data%species(stoich_data%index_indep(i))%ox
     End Do
 
-
     If (Abs(oxtot)<epsilon(1.0_wp)) Then
       Write (message,'(a)') '***ERROR: the sum of the oxidation states for all the independent variables is zero!!!&
                           & Electrodepositon analysis is not possible. Please check'
       Call error_stop(message)
     End If
 
-    area_factor=-mtot*g_to_ng/Farad 
-    area_factor= area_factor/oxtot/(DM/DQ) 
- 
-    If (area_factor < 0.0_wp) Then
-      Write (message,'(3a,i2,a)') '***ERROR: Computed A_eff/A_geom ratio for ', Trim(stoich_data%cv_leg), &
-                                &' of cycle ', stoich_data%cv_cycle, ' is negative. Please review the setting&
-                                & for the selected sign of the cathodic/anodic current'
-      Call error_stop(message)
-    End If
-
-    mol=DM*area_factor/(mtot*g_to_ng)
+    If (record_mass) Then
+      dMQ=-DQ*(mtot*g_to_ng)/(oxtot*Farad)
+      ratio=DMQ/DM
+      If (ratio < 0.0_wp) Then
+        Write (message,'(3a,i2,a)') '***ERROR: Computed DMeff/DMQ ratio for ', Trim(stoich_data%cv_leg), &
+                                  &' of cycle ', stoich_data%cv_cycle, ' is negative. Please review the setting&
+                                  & for the selected sign of the cathodic/anodic current'
+        Call error_stop(message)
+      End If
+      mol=-DQ/(oxtot*Farad)    
+    Else
+      If (record_mass_freq) Then
+        ratio=-mtot*g_to_ng/Farad 
+        ratio= ratio/oxtot/(DM/DQ) 
+        If (ratio < 0.0_wp) Then
+          Write (message,'(3a,i2,a)') '***ERROR: Computed A_eff/A_geom ratio for ', Trim(stoich_data%cv_leg), &
+                                    &' of cycle ', stoich_data%cv_cycle, ' is negative. Please review the setting&
+                                    & for the selected sign of the cathodic/anodic current'
+          Call error_stop(message)
+        End If
+        mol=DM*ratio/(mtot*g_to_ng)
+      End If
+    End If        
 
     If (Trim(stoich_data%cv_leg)=='oxidation') Then
-      stoich_data%area_ratio_ox(stoich_data%cv_cycle)=area_factor
+      stoich_data%elec_depo_ratio_ox(stoich_data%cv_cycle)=ratio
       stoich_data%mole_ox(stoich_data%cv_cycle)=mol
       stoich_data%solution_moles(jc,ic)=mol
     ElseIf (Trim(stoich_data%cv_leg)=='reduction') Then
-      stoich_data%area_ratio_red(stoich_data%cv_cycle)=area_factor
+      stoich_data%elec_depo_ratio_red(stoich_data%cv_cycle)=ratio
       stoich_data%mole_red(stoich_data%cv_cycle)=mol
       stoich_data%solution_moles(jc,ic)=mol
     End If

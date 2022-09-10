@@ -37,7 +37,7 @@ Module redox
     Real(Kind=wp), Allocatable, Public :: Q_red(:,:)
 
     ! Mass variables
-    Real(Kind=wp), Allocatable, Public :: mass_density(:,:)
+    Real(Kind=wp), Allocatable, Public :: mass(:,:)
     Real(Kind=wp), Allocatable, Public :: M_ox(:,:)
     Real(Kind=wp), Allocatable, Public :: M_red(:,:)
     Real(Kind=wp), Allocatable, Public :: DM_ox(:)
@@ -124,13 +124,13 @@ Contains
     Character(Len=256)  :: message
     Integer(Kind=wi) :: fail(7)
 
-    Allocate(T%DM_ox(T%ncycles)                    , Stat=fail(1))
-    Allocate(T%DM_red(T%ncycles)                   , Stat=fail(2))
-    Allocate(T%DM_residual(T%ncycles)              , Stat=fail(3))
-    Allocate(T%DM_half(T%ncycles)                  , Stat=fail(4))
-    Allocate(T%mass_density(T%maxpoints,T%ncycles) , Stat=fail(5))
-    Allocate(T%M_ox(T%maxpoints,T%ncycles)         , Stat=fail(6))
-    Allocate(T%M_red(T%maxpoints,T%ncycles)        , Stat=fail(7))
+    Allocate(T%DM_ox(T%ncycles),             Stat=fail(1))
+    Allocate(T%DM_red(T%ncycles),            Stat=fail(2))
+    Allocate(T%DM_residual(T%ncycles),       Stat=fail(3))
+    Allocate(T%DM_half(T%ncycles),           Stat=fail(4))
+    Allocate(T%mass(T%maxpoints,T%ncycles),  Stat=fail(5))
+    Allocate(T%M_ox(T%maxpoints,T%ncycles),  Stat=fail(6))
+    Allocate(T%M_red(T%maxpoints,T%ncycles), Stat=fail(7))
 
     If (Any(fail > 0)) Then
       Write (message,'(1x,1a)') '***ERROR: Allocation problems of redox mass related arrays&
@@ -139,7 +139,7 @@ Contains
     End If
 
     !Initialise
-    T%mass_density=0.0_wp
+    T%mass=0.0_wp
     T%DM_ox=0.0_wp
     T%DM_red=0.0_wp
     T%DM_residual=0.0_wp
@@ -212,8 +212,8 @@ Contains
       Deallocate(T%DM_red)
     End If
 
-    If (Allocated(T%mass_density)) Then
-      Deallocate(T%mass_density)
+    If (Allocated(T%mass)) Then
+      Deallocate(T%mass)
     End If
 
     If (Allocated(T%DM_residual)) Then
@@ -256,7 +256,7 @@ Contains
     End If
 
     !Extract values and integrate quantities
-    If (eqcm_data%mass_frequency%fread) Then
+    If (eqcm_data%mass_frequency%fread .Or. eqcm_data%mass%fread) Then
       Call redox_data%init_mass()
     End If
     Call assign_redox_variables(eqcm_data, redox_data) 
@@ -266,7 +266,7 @@ Contains
     End If   
 
     !Extract values and integrate quantities
-    If (eqcm_data%mass_frequency%fread) Then
+    If (eqcm_data%mass_frequency%fread .Or. eqcm_data%mass%fread) Then
       Call extract_Dmass(eqcm_data, redox_data, electrode_data)
     End If
 
@@ -316,11 +316,17 @@ Contains
             l=l+1
             redox_data%voltage(l,icycle)= eqcm_data%voltage%value(k,j,i)
             redox_data%current(l,icycle)  = eqcm_data%current%value(k,j,i)
+
             If (eqcm_data%time%fread) Then
               redox_data%time(l,icycle)=eqcm_data%time%value(k,j,i)
             End If
-            If (eqcm_data%mass_frequency%fread) Then
-              redox_data%mass_density(l,icycle)=eqcm_data%mass_frequency%value(k,j,i)
+
+            If (eqcm_data%mass%fread) Then
+                redox_data%mass(l,icycle)=eqcm_data%mass%value(k,j,i)
+            Else 
+              If (eqcm_data%mass_frequency%fread) Then
+                redox_data%mass(l,icycle)=eqcm_data%mass_frequency%value(k,j,i)
+              End If
             End If
  
             If (eqcm_data%label_leg(j,i)=='positive' .And. (.Not. flag) )flag=.True.
@@ -340,9 +346,17 @@ Contains
             l=l+1
             redox_data%voltage(l,icycle)= eqcm_data%voltage%value(k,j,i)
             redox_data%current(l,icycle)  = eqcm_data%current%value(k,j,i)
-            If (eqcm_data%time%fread)redox_data%time(l,icycle)=eqcm_data%time%value(k,j,i)
-            If (eqcm_data%mass_frequency%fread) Then
-              redox_data%mass_density(l,icycle)=eqcm_data%mass_frequency%value(k,j,i)
+
+            If (eqcm_data%time%fread) Then
+              redox_data%time(l,icycle)=eqcm_data%time%value(k,j,i)
+            End If  
+
+            If (eqcm_data%mass%fread) Then
+              redox_data%mass(l,icycle)=eqcm_data%mass%value(k,j,i)
+            Else         
+              If (eqcm_data%mass_frequency%fread) Then
+                redox_data%mass(l,icycle)=eqcm_data%mass_frequency%value(k,j,i)
+              End If 
             End If 
 
             If (eqcm_data%label_leg(j,i)=='negative' .And. (.Not. flag) )flag=.True.
@@ -536,8 +550,7 @@ Contains
     End If
 
 
-    If (eqcm_data%mass_frequency%fread .And. &
-      &(eqcm_data%current%fread)) Then
+    If (eqcm_data%mass_frequency%fread .And. (eqcm_data%current%fread)) Then
       Write (iunit,'(1x,11(a,4x))') '#Cycle', 'Dmass_oxidation [ng]', 'Dmass_reduction [ng]', &
                                        'Dmass_residual [ng]', 'Dmass_half_redox [ng]', &
                                        'Q_oxidation [mC]', 'Q_reduction [mC]',&
@@ -723,8 +736,8 @@ Contains
 
   Subroutine extract_Dmass(eqcm_data, redox_data, electrode_data)
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    ! Obtain mass variation for oxidation/reduction. Mass densities are
-    ! multiplied by the electrode area
+    ! Obtain mass variation for oxidation/reduction. 
+    ! Mass densities are multiplied by the electrode area
     ! 
     ! author    - i.scivetti June 2020
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -733,11 +746,13 @@ Contains
     Type(electrode_type), Intent(In   ) :: electrode_data 
 
     Integer(Kind=wi)   :: i, k
-    Real(Kind=wp)      :: dV, mass_limit, area
+    Real(Kind=wp)      :: dV, mass_limit
     Logical            :: flip_pos, flip_neg, fpass
     Character(Len=256) :: message
 
-    area=electrode_data%area_geom%value
+    If (.Not. eqcm_data%mass%fread) Then 
+      redox_data%mass=electrode_data%area_geom%value*redox_data%mass  
+    End If
 
     Do i = 1, redox_data%limit_cycles
       mass_limit=0.0_wp
@@ -758,7 +773,7 @@ Contains
           If ((.Not. flip_pos) .And. redox_data%current(k,i)>0) Then
            flip_pos=.True.
            flip_neg=.False.
-           Mass_limit = redox_data%mass_density(k-1,i)
+           Mass_limit = redox_data%mass(k-1,i)
            fpass=.False.
           End If
   
@@ -777,7 +792,7 @@ Contains
           If ((.Not. flip_neg) .And. redox_data%current(k,i)<0) Then
            flip_pos=.False.
            flip_neg=.True.
-           Mass_limit = redox_data%mass_density(k-1,i)
+           Mass_limit = redox_data%mass(k-1,i)
            fpass=.False.
           End If
         End If
@@ -787,9 +802,9 @@ Contains
       Do k=1, redox_data%points(i)
          If (eqcm_data%scan_sweep_ref=='negative') Then
            If (redox_data%current(k,i)<=0) Then
-             redox_data%M_red(k,i)=area*(redox_data%mass_density(k,i)-redox_data%mass_density(1,i))  
+             redox_data%M_red(k,i)=(redox_data%mass(k,i)-redox_data%mass(1,i))  
            Else
-             redox_data%M_ox(k,i)=area*(redox_data%mass_density(k,i)-mass_limit)
+             redox_data%M_ox(k,i)=(redox_data%mass(k,i)-mass_limit)
            EndIf
          End If
       End Do
@@ -801,8 +816,8 @@ Contains
       End If 
   
       If (eqcm_data%scan_sweep_ref=='negative') Then
-        redox_data%DM_red(i)=     area*(mass_limit-redox_data%mass_density(1,i))
-        redox_data%DM_ox(i) =     area*(redox_data%mass_density(redox_data%points(i),i)-mass_limit) 
+        redox_data%DM_red(i)=     (mass_limit-redox_data%mass(1,i))
+        redox_data%DM_ox(i) =     (redox_data%mass(redox_data%points(i),i)-mass_limit) 
         redox_data%DM_residual(i)=redox_data%DM_red(i)+redox_data%DM_ox(i)
         If (i== 1) Then
           redox_data%DM_half(i)=redox_data%DM_red(i) 
@@ -811,8 +826,8 @@ Contains
           redox_data%DM_residual(i)=redox_data%DM_residual(i)+redox_data%DM_residual(i-1) 
         End If
       Else If (eqcm_data%scan_sweep_ref=='positive') Then
-        redox_data%DM_red(i)=area*(redox_data%mass_density(redox_data%points(i),i)-mass_limit)
-        redox_data%DM_ox(i) =area*(mass_limit-redox_data%mass_density(1,i))
+        redox_data%DM_red(i)=(redox_data%mass(redox_data%points(i),i)-mass_limit)
+        redox_data%DM_ox(i) =(mass_limit-redox_data%mass(1,i))
         redox_data%DM_residual(i)=redox_data%DM_ox(i)+redox_data%DM_red(i)
         If (i== 1) Then
           redox_data%DM_half(i)=redox_data%DM_ox(i) 

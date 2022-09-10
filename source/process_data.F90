@@ -24,6 +24,7 @@ Module process_data
   Public :: capital_to_lower_case, &
             check_for_symbols,     &  
             check_for_rubbish,     &
+             detect_rubbish,       & 
             get_word_length,       &
             remove_symbols,        &
             remove_front_tabs
@@ -158,30 +159,44 @@ Contains
 
   Subroutine check_for_rubbish(iunit, error)
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    ! Finds if there are wrong characters in the definition of sentences
-    ! Wrong characters are ","
+    ! Finds if there are "wrong" characters in the definition of sentences
     !
     ! author  - i.scivetti December 2021
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     Integer,          Intent(In   ) :: iunit
     Character(Len=*), Intent(In   ) :: error
 
-    Character(Len=2)   :: list
-    Character(Len=256) :: string    
+    Character(Len=256) :: string
+
+    Backspace iunit
+    Read (iunit, Fmt='(a)') string
+    !string=Trim(Adjustl(string))
+
+    Call detect_rubbish(string, error)
+    Backspace iunit
+
+  End Subroutine check_for_rubbish
+
+  Subroutine detect_rubbish(string, error)
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    ! Detect wrong characters 
+    !
+    ! author  - i.scivetti December 2021
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    Character(Len=*), Intent(In   ) :: string
+    Character(Len=*), Intent(In   ) :: error
+
+    Character(Len=5)   :: list
     Character(Len=256) :: messages(7)
     Integer(Kind=wi) :: ic_hash, ic_rubbish, i
     Logical :: hash_found, rubbish_found, trigger, fread
 
-    list=',/'
+    list='/\,;'//"'"
     hash_found=.False.
     rubbish_found=.False.
     trigger=.False.
     fread=.True.
-    
-    Backspace iunit
-    Read (iunit, Fmt='(a)') string
-    string=Trim(Adjustl(string))
-
+            
     ! Find if # is defined in "string"
     i=1
     Do While (i <= Len_Trim(string) .And. (.Not. hash_found))
@@ -216,7 +231,7 @@ Contains
     If (trigger) Then
       Call info(' ', 1)
       Write (messages(1),'(1x,2a)') '*** ERROR in ', Trim(error) 
-      Write (messages(2),'(1x,a)')  '*** Wrong character ("," , "/" or both) is found in the following line:'     
+      Write (messages(2),'(1x,3a)') '*** At least one of these characters (', Trim(list), ') is found in the following line:'     
       Write (messages(3),'(a)')     ' '
       Write (messages(4),'(1x,a)')   Trim(string)
       Write (messages(5),'(a)')     ' '
@@ -228,9 +243,7 @@ Contains
       Call error_stop(' ')
     End If
 
-    Backspace iunit
-
-  End Subroutine check_for_rubbish
+  End Subroutine detect_rubbish
 
 End module process_data
 

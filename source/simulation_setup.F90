@@ -183,7 +183,8 @@ Contains
           Write (messages(1), '(1x,3a)') '***ERROR: folder ', Trim(FOLDER_DFT), ' cannot be found.'
           Write (messages(2), '(1x,a)') 'This folder must contain folder PPs (for pseudo potentials)&
                                        & and BASIS_SET file (for the CP2K code)'
-          Write (messages(3), '(1x,a)') 'The requested analysis cannot be conducted. Pleased create the folder.'
+          Write (messages(3), '(1x,a)') 'The requested analysis cannot be conducted. Pleased create the folder&
+                                       & and add the required information.'
           Call info(messages, 3)
           Call error_stop(' ')
         End If
@@ -219,6 +220,8 @@ Contains
         Call info(messages, 1)
         Call error_stop(' ')
       End If
+    Else
+      simulation_data%extra_directives%N0 = 0      
     End If
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -578,7 +581,7 @@ Contains
            Trim(simulation_data%dft%smear%type)  /= 'fermi'         .And.&
            Trim(simulation_data%dft%smear%type)  /= 'mp'            .And.&
            Trim(simulation_data%dft%smear%type)  /= 'window'        .And.&
-           Trim(simulation_data%dft%smear%type)  /= 'fix-occupancy' .And.&
+           Trim(simulation_data%dft%smear%type)  /= 'fix_occupancy' .And.&
            Trim(simulation_data%dft%smear%type)  /= 'tetrahedron'  ) Then
           Write (messages(1),'(4(1x,a))') Trim(error_dft), &
                                     &'Invalid specification of directive "smearing":', Trim(simulation_data%dft%smear%type), &
@@ -598,9 +601,12 @@ Contains
     ! Basis sets (compulsory for basis set codes)
     If (Trim(simulation_data%code_format) == 'cp2k') Then
       If (.Not. simulation_data%dft%basis_info%fread) Then
-         Write (message,'(1x,2a)') Trim(error_dft), ' To generate input files for code CP2K, it is required&
-                             & to provide information of basis sets via block "&basis_set", which is missing.'
-         Call error_stop(message)
+         Write (messages(1),'(1x,a)') ' '
+         Write (messages(2),'(1x,a)') '**********************************************************************'
+         Write (messages(3),'(1x,a)') '*** WARNING: the "&basis_set" sub-block has not been defined.      ***'
+         Write (messages(4),'(1x,a)') '***          ALC_EQCM will not generate files with the basis sets! ***'
+         Write (messages(5),'(1x,a)') '**********************************************************************'
+         Call info(messages, 5)
       Else
         ! Check if user has included all the tags
         Do i=1, simulation_data%total_tags
@@ -640,18 +646,14 @@ Contains
     End If
 
 
-    ! Pseudopotentials (compulsory for cp2k, onetep and vasp)
+    ! Pseudopotentials (compulsory for onetep)
     If (.Not. simulation_data%dft%pp_info%stat) Then
-       If (Trim(simulation_data%code_format) /= 'castep') Then
-         Write (message,'(1x,4a)') Trim(error_dft), &
-                           &' Information for pseudopotentials via "&pseudo_potentials" has not been specified. This is&
-                           & needed for the generation of DFT files for "', Trim(simulation_data%code_format),&
-                           & '" simulations.'
-         Call error_stop(message)
-       Else
-         Write (message,'(1x,a)') '***IMPORTANT: ALC_EQCM will request CASTEP to generate pseudo potentials automatically.'
-         Call info(message, 1)
-       End If
+      Write (messages(1),'(1x,a)') ' '
+      Write (messages(2),'(1x,a)') '*************************************************************************'
+      Write (messages(3),'(1x,a)') '*** WARNING: the "&pseudo_potentials" sub-block has not been defined. ***'
+      Write (messages(4),'(1x,a)') '***          ALC_EQCM will not generate pseudopotential files!        ***'
+      Write (messages(5),'(1x,a)') '*************************************************************************'
+      Call info(messages, 5)
     Else
       ! Check if user has included all the tags 
       Do i=1, simulation_data%total_tags 
@@ -828,6 +830,30 @@ Contains
       ! By default, there is no EDFT 
       simulation_data%dft%edft%stat=.False.
     End If
+
+    ! Check the code vs EDFT
+    If (simulation_data%dft%edft%stat) Then
+      If (Trim(simulation_data%code_format) /= 'onetep' .And. &
+          Trim(simulation_data%code_format) /= 'castep' ) Then
+        Write (message,'(1x,a,1x,3a)')  Trim(error_dft), 'eDFT simulations are not possible for the requested code format "', &
+                               & Trim(simulation_data%code_format), '". Please remove the "edft" directive or set it to .False.'
+        Call error_stop(message)
+      End If            
+    End If 
+
+    ! GC-DFT functionality
+    If (simulation_data%dft%gc%activate%stat) Then
+      If (Trim(simulation_data%code_format) /= 'onetep' ) Then
+        Write (message,'(1x,a,1x,3a)')  Trim(error_dft), 'GC-DFT simulations are not possible for the requested code format "', &
+                & Trim(simulation_data%code_format), '". Please remove the &gcdft sub-block.'
+        Call error_stop(message)
+      End If
+      If (Trim(simulation_data%process)/= 'electrodeposition') Then
+        Write (message,'(1x,a,1x,3a)')  Trim(error_dft), 'GC-DFT simulations are only possible for surfaces systems and&
+                                        & electrodeposition processes.'
+        Call error_stop(message)
+      End If        
+    End If        
 
     ! precision (only compulsory for VASP)
     If (simulation_data%dft%precision%fread) Then
@@ -1160,7 +1186,6 @@ Contains
     End If
 
   End Subroutine check_dft_settings
-
 
   Subroutine check_motion_settings(files, stoich_data, simulation_data)
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -1680,6 +1705,67 @@ Contains
                                   & of the ALC_EQCM manual.'  
     Call info(messages, 7)
 
+
+    If (.Not. simulation_data%dft%pp_info%stat) Then
+      Call info(' ', 1)
+      Call info(' *** WARNING *************************************************************************', 1)
+      If (Trim(simulation_data%code_format) /= 'cp2k') Then
+        Write (messages(1), '(1x,a)') '*** If pseudopotential files have been already generated, please ignore this message:'
+        Call info(messages, 1)
+      End If
+      Write (messages(1), '(1x,a)') '    ALC_EQCM has NOT generated pseudopotential files because the &pseudo_potentials' 
+      If (Trim(simulation_data%code_format) /= 'castep') Then
+        Write (messages(2), '(1x,a)') '    sub-block has not been defined. Thus, the generated files are NOT SUFFICIENT to'
+        Write (messages(3), '(1x,a)') '    execute the DFT simulations. The user MUST set the &pseudo_potentials sub-block within'
+        Write (messages(4), '(1x,a)') '    &dft_settings (and relevant files within the DFT folder) for automatic generation'
+        Write (messages(5), '(1x,a)') '    of pseudopotentials. It is NOT RECOMMENDED to set pseudopotential info manually'
+      Else
+        Write (messages(2), '(1x,a)') '    sub-block has not been defined. Still, the generated files are sufficient to'
+        Write (messages(3), '(1x,a)') '    execute the DFT simulations since CASTEP will generate ultra-soft pseudopotentials'
+        Write (messages(4), '(1x,a)') '    "on-the-fly". If other type of pseudopotentials is needed, the user must set the'
+        Write (messages(5), '(1x,a)') '    &pseudo_potentials sub-block for automatic generation of files'  
+      End If        
+      Call info(messages, 5)
+      Call info(' *************************************************************************************', 1)
+    End If
+     
+    If (.Not. simulation_data%dft%basis_info%stat) Then
+      If (Trim(simulation_data%code_format) == 'cp2k') Then
+        Call info(' ', 1)
+        Call info(' *** WARNING *************************************************************************', 1)
+        Write (messages(1), '(1x,a)') '    ALC_EQCM has NOT generated basis set files because the &basis_set sub-block' 
+        Write (messages(2), '(1x,a)') '    has not been defined. Thus, the generated files are NOT SUFFICIENT to'
+        Write (messages(3), '(1x,a)') '    execute the DFT simulations. The user MUST set the &basis_set sub-block'
+        Write (messages(4), '(1x,a)') '    within &dft_settings for automatic generation of basis set input files.'
+        Write (messages(5), '(1x,a)') '    It is NOT RECOMMENDED to set information for the basis sets manually'
+        Call info(messages, 5)
+        Call info(' *************************************************************************************', 1)
+      End If        
+    End If
+
+    If (simulation_data%extra_info%fread) Then
+      Call info(' ', 1)
+      Call info(' *** WARNING *************************************************************************', 1)
+      Write (messages(1), '(1x,a)') '  - ALC_EQCM only checked that the information added in "&extra_directives" has not'
+      Write (messages(2), '(1x,a)') '    been already defined from the settings provided in "&block_simulation_settings"'   
+      Write (messages(3), '(1x,a)') '  - specification in "&extra_directives" for functionalities that are not implemented'
+      Write (messages(4), '(1x,a)') '    in ALC_EQCM were printed, but their correctness is full responsibility of the user'
+      Call info(messages, 4)
+      Call info(' *************************************************************************************', 1)
+    End If
+
+    If (Trim(simulation_data%code_format)=='cp2k') Then
+      Call info(' ', 1)
+      Call info(' *** WARNING ****************************************************************************', 1)
+      Write (messages(1), '(1x,a)') '   Due to the complex block structure of the input.cp2k file, the use of'
+      Write (messages(2), '(1x,a)') '   "&extra_directives" is not allowed for the generation of files for CP2K simulations.' 
+      Write (messages(3), '(1x,a)') '   Although most directives are defined from &block_simulation_settings, there are'   
+      Write (messages(4), '(1x,a)') '   keywords that have been set arbitrarily (see ALC_EQCM manual) based on our previous'
+      Write (messages(5), '(1x,a)') '   experience with CP2K. Unfortunately, changes to such directives must be set manually.' 
+      Call info(messages, 5)
+      Call info(' ****************************************************************************************', 1)
+    End If
+
     If (Trim(simulation_data%code_format)=='vasp') Then
       Call warnings_vasp(simulation_data)
     Else If (Trim(simulation_data%code_format)=='cp2k') Then
@@ -1707,21 +1793,57 @@ Contains
 
     If (Trim(simulation_data%code_format)=='vasp') Then
       Write (messages(1),'(1x,a)') 'Input files have been generated for execution with the VASP code.'
-      Write (messages(2),'(1x,a)') 'Files INCAR, KPOINTS, POTCAR and POSCAR are located in each sub-folder.'  
       Write (messages(3),'(1x,a)') 'POSCAR is a copy of the generated atomic structure (SAMPLE.vasp).'  
-      Call info(messages,3)
+      If (simulation_data%dft%pp_info%stat) Then
+        Write (messages(2),'(1x,a)') 'Files INCAR, KPOINTS, POTCAR and POSCAR are located at each sub-folder.'  
+        Call info(messages, 3)
+      Else
+        Write (messages(2),'(1x,a)') 'Files INCAR, KPOINTS and POSCAR are located at each sub-folder.'  
+        Write (messages(4),'(1x,a)') 'WARNING: Pseudopotential file (POTCAR) has not been set due to&
+                                    & the missing sub-block &pseudo_potentials.'
+        Call info(messages, 4)
+      End If         
     Else If (Trim(simulation_data%code_format)=='cp2k') Then    
       Write (messages(1),'(1x,a)') 'Input files have been generated for execution with the CP2K code.'
-      Call info(messages, 1)
+      Write (messages(2),'(1x,a)') 'File input.cp2k with DFT settings is located at each sub-folder.'  
+      If (simulation_data%dft%pp_info%stat) Then
+        Write (messages(3),'(1x,2a)') 'Pseudopotentials for the atomic species have also been copied to each sub-folder.&
+                                    & See file ', Trim(simulation_data%dft%pseudo_pot(1)%file_name) 
+      Else
+        Write (messages(3),'(1x,a)') 'WARNING: Pseudopotentials files have not been set due to the missing&
+                                    & sub-block &pseudo_potentials.'
+      End If         
+      Call info(messages, 3)
     Else If (Trim(simulation_data%code_format)=='onetep') Then    
       Write (messages(1),'(1x,a)') 'Input files have been generated for execution with the ONETEP code.'
-      Call info(messages,1)
+      Write (messages(2),'(1x,a)') 'File model.dat with DFT settings is located at each sub-folder.'  
+      If (simulation_data%dft%pp_info%stat) Then
+        Write (messages(3),'(1x,a)') 'Pseudopotentials for the atomic species have also been copied to each sub-folder.'  
+      Else
+        Write (messages(3),'(1x,a)') 'WARNING: Pseudopotentials files have not been set due to the missing&
+                                    & sub-block &pseudo_potentials.'
+      End If         
+      Call info(messages, 3)
     Else If (Trim(simulation_data%code_format)=='castep') Then    
       Write (messages(1),'(1x,a)') 'Input files have been generated for execution with the CASTEP code.'
-      Call info(messages,1)
+      Write (messages(2),'(1x,a)') 'Files model.param and model.cell with DFT settings are located at each sub-folder.'  
+      If (simulation_data%dft%pp_info%stat) Then
+        Write (messages(3),'(1x,a)') 'Pseudopotentials for the atomic species have also been copied to each sub-folder.'  
+        Call info(messages, 3)
+      Else
+        Write (messages(3),'(1x,a)') 'WARNING: Pseudopotentials files have not been set due to the missing&
+                                    & sub-block &pseudo_potentials.'
+      End If         
+      Call info(messages, 3)
     End If
 
     Call info(' === DFT settings:', 1)
+    ! Grand Canonical
+    If (simulation_data%dft%gc%activate%fread) Then
+       Write (messages(1),'(1x,a)')  '- Grand-Canonical approximation for electrochemical conditions'
+       Call info(messages, 1)
+    End If        
+
     ! Spin polarization 
     If (simulation_data%dft%spin_polarised%fread) Then
        Write (messages(1),'(1x,a)')         '- spin-polarised calculation'
@@ -1760,9 +1882,14 @@ Contains
     Call info(messages,3)
  
     If (Trim(simulation_data%code_format)=='vasp') Then
-      Write (messages(1),'(1x,a)')        '- Blocked-Davidson algorithm to optimize the KS orbitals '
-      Write (messages(2),'(1x,2a)')       '- smearing method: ', Trim(simulation_data%dft%smear%type)
-      Call info(messages,2)
+      If (simulation_data%dft%mixing%fread) Then      
+        Write (messages(1),'(1x,2a)')     '- mixing scheme: ', Trim(simulation_data%dft%mixing%type)
+      Else 
+        Write (messages(1),'(1x,a)')      '- Pulay mixing scheme is set by default'      
+      End If  
+      Call info(messages,1)
+      Write (messages(1),'(1x,2a)')       '- smearing method: ', Trim(simulation_data%dft%smear%type)
+      Call info(messages,1)
       If (Trim(simulation_data%dft%smear%type) /= 'tetrahedron'  ) Then
         Write (messages(1),'(1x,a,f6.3,1x,a)')  '- smearing width: ', simulation_data%dft%width_smear%value, &
                                           &  Trim(simulation_data%dft%width_smear%units)
@@ -1773,50 +1900,59 @@ Contains
         Write (messages(1),'(1x,a)') '- Orbital Transformation (OT) method for wavefunction optimisation' 
         Call info(messages,1)
       Else
-        Write (messages(1),'(1x,a)') '- Standard LAPACK diagonalization for the KS equations' 
-        Write (messages(2),'(1x,2a)')            '- smearing method: ', Trim(simulation_data%dft%smear%type)
-        Write (messages(3),'(1x,a,f12.3,1x,a)')  '- smearing width: ', simulation_data%dft%width_smear%value, &
+        Write (messages(1),'(1x,a)')             '- Standard LAPACK diagonalization for the KS equations' 
+        Write (messages(2),'(1x,2a)')            '- mixing scheme: ', Trim(simulation_data%dft%mixing%type)
+        Write (messages(3),'(1x,2a)')            '- smearing method: ', Trim(simulation_data%dft%smear%type)
+        Write (messages(4),'(1x,a,f12.3,1x,a)')  '- smearing width: ', simulation_data%dft%width_smear%value, &
                                                   &  Trim(simulation_data%dft%width_smear%units)
-        Call info(messages,3)
+        Call info(messages,4)
       End If
     Else If (Trim(simulation_data%code_format)=='castep') Then  
-      If (Trim(simulation_data%dft%smear%type) == 'fix-occupancy' ) Then
+      If (Trim(simulation_data%dft%smear%type) == 'fix_occupancy' ) Then
         Write (messages(1),'(1x,a)') '- fix occupancy for the electronic states'
         Call info(messages,1)
       Else
         If (simulation_data%dft%edft%fread) Then
-          Write (messages(1),'(1x,a)')        '- Ensemble DFT with an electronic temperature of 500 K'
+          Write (messages(1),'(1x,a,f6.2,1x,a)')  '- Ensemble DFT with an electronic temperature of ', &
+                                                 & simulation_data%dft%width_smear%value, '(in eV)' 
         Else
-          Write (messages(1),'(1x,a)')        '- Pulay mixing scheme for the electronic problem'
+          If (simulation_data%dft%mixing%fread) Then 
+            If (Trim(simulation_data%dft%mixing%type)    == 'broyden-2nd') Then 
+              Write (messages(1),'(1x,a)')      '- mixing scheme:   Broyden-2nd (it is named as Broyden)'
+            Else        
+              Write (messages(1),'(1x,2a)')     '- mixing scheme: ', Trim(simulation_data%dft%mixing%type)
+            End If
+          Else 
+            Write (messages(1),'(1x,a)')      '- Broyden-2nd mixing scheme is set by default (named as Broyden in CASTEP)'      
+          End If  
         End If
-        Write (messages(2),'(1x,a,f6.3,1x,a)')  '- smearing width: ', simulation_data%dft%width_smear%value, &
+        Write (messages(2),'(1x,2a)')           '- smearing method: ', Trim(simulation_data%dft%smear%type)
+        Write (messages(3),'(1x,a,f6.3,1x,a)')  '- smearing width: ', simulation_data%dft%width_smear%value, &
                                   &  Trim(simulation_data%dft%width_smear%units)
-        Call info(messages,2)
+        Call info(messages,3)
       End If
     Else If (Trim(simulation_data%code_format)=='onetep') Then 
       If (simulation_data%dft%edft%fread) Then
-         Write (messages(1),'(1x,a)')        '- Ensemble DFT computation using the Fermi-Dirac distribution'
-         Write (messages(2),'(1x,a,f6.3,1x,a)')  '- smearing width: ', simulation_data%dft%width_smear%value, &
+         Write (messages(1),'(1x,a)')            '- Ensemble DFT computation using the Fermi-Dirac distribution'
+         Write (messages(2),'(1x,2a)')           '- mixing scheme: ', Trim(simulation_data%dft%mixing%type)
+         Write (messages(3),'(1x,a,f6.3,1x,a)')  '- smearing width: ', simulation_data%dft%width_smear%value, &
                                                  &  Trim(simulation_data%dft%width_smear%units)
-        Call info(messages,2)          
+        Call info(messages,3)          
       Else
-         Write (messages(1),'(1x,a)')        '- Standard ONETEP computation for systems with band gap'
-         Call info(messages,1)
+         Write (messages(1),'(1x,a)')        '- standard ONETEP computation for systems with band gap'
+         Write (messages(2),'(1x,2a)')       '- mixing scheme: ', Trim(simulation_data%dft%mixing%type)
+         Call info(messages, 2)
       End If
     End If
-  
-    If (Trim(simulation_data%code_format)=='cp2k') Then
-       Write (messages(1),'(1x,a)')        '- the atomic basis set for the participating species is defined&
-                                           & in sub-block &basis_set'
-       Call info(messages,1)
+
+    If (simulation_data%dft%basis_info%fread) Then  
+      If (Trim(simulation_data%code_format)=='cp2k') Then
+         Write (messages(1),'(1x,a)')        '- the atomic basis set for the participating species is defined&
+                                             & in sub-block &basis_set'
+         Call info(messages,1)
+      End If 
     End If 
  
-    ! Pseudo potentials
-    If (.Not. simulation_data%dft%pp_info%stat) Then
-      Write (messages(1),'(1x,a)')        '- pseudo potentials will be generated on the fly'
-      Call info(messages, 1)
-    End If 
-
     ! number of bands 
     If (simulation_data%dft%bands%fread) Then
       If (Trim(simulation_data%code_format)=='vasp') Then

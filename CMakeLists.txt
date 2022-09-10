@@ -27,7 +27,7 @@ add_executable(alc_eqcm.x ${SOURCES})
 
 if(WITH_TESTING)
   include(CTest)
-  message(STATUS "Building with implemented tests for code development...")
+  message(STATUS "Building with implemented tests...")
 
   # Define a macro
   macro (do_test arg)
@@ -56,7 +56,7 @@ if(WITH_TESTING)
   # Name executable + whole path for execution
   set(alc_eqcm "${CMAKE_BINARY_DIR}/bin/${target_name}")
 
-  foreach(test RANGE 1 54 1)
+  foreach(test RANGE 1 63 1)
     do_test("test${test}")
   endforeach()
 

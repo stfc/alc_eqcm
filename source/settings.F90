@@ -245,9 +245,9 @@ Contains
         Call set_read_status(word, io, filter_data%cutoff%fread, filter_data%cutoff%fail)
         Call capital_to_lower_case(filter_data%cutoff%units)
 
-      Else If (word(1:length) == 'endpoints_mass_frequency') Then
-        Read (iunit, Fmt=*, iostat=io) word, fft_data%end_mass_frequency%value
-        Call set_read_status(word, io, fft_data%end_mass_frequency%fread, fft_data%end_mass_frequency%fail)
+      Else If (word(1:length) == 'endpoints_mass') Then
+        Read (iunit, Fmt=*, iostat=io) word, fft_data%end_mass%value
+        Call set_read_status(word, io, fft_data%end_mass%fread, fft_data%end_mass%fail)
 
       Else If (word(1:length) == 'endpoints_current') Then
         Read (iunit, Fmt=*, iostat=io) word, fft_data%end_current%value
@@ -382,6 +382,10 @@ Contains
         Call set_read_status(word, io, model_data%deposition_level%fread, model_data%deposition_level%fail)
         Call capital_to_lower_case(model_data%deposition_level%units)
 
+      Else If (word(1:length) == 'shift_structure') Then 
+        Read (iunit, Fmt=*, iostat=io) word, model_data%shift_structure%stat
+        Call set_read_status(word, io, model_data%shift_structure%fread, model_data%shift_structure%fail)
+
       Else If (word(1:length) == 'repeat_input_model') Then 
         Read (iunit, Fmt=*, iostat=io) word, (model_data%repeat_input_model%value(j), j=1,3)
         Call set_read_status(word, io, model_data%repeat_input_model%fread, model_data%repeat_input_model%fail)
@@ -401,6 +405,10 @@ Contains
       Else If (word(1:length) == 'multiple_input_atoms') Then 
         Read (iunit, Fmt=*, iostat=io) word, model_data%multiple_input_atoms%value
         Call set_read_status(word, io, model_data%multiple_input_atoms%fread, model_data%multiple_input_atoms%fail)
+
+      Else If (word(1:length) == 'multiple_output_atoms') Then 
+        Read (iunit, Fmt=*, iostat=io) word, model_data%multiple_output_atoms%value
+        Call set_read_status(word, io, model_data%multiple_output_atoms%fread, model_data%multiple_output_atoms%fail)
 
       Else If (word(1:length) == 'normal_vector') Then 
         Read (iunit, Fmt=*, iostat=io) word, model_data%normal_vector%type
@@ -535,21 +543,21 @@ Contains
       Call info(message,1)
               Call info(' ----------------------------------------------------------------------------------------', 1)
       If (eqcm_data%analysis%type == 'spectra' ) Then
-        Write (messages(1),'(1x,a)')  'This option computes the FFT for current and/or mass density. Magnitudes are reported'
+        Write (messages(1),'(1x,a)')  'This option computes the FFT for current and/or mass/mass-density. Values are reported'
         Write (messages(2),'(1x,a)')  'for the different components of the reciprocal space in units of 1/V (if the elapsed'
         Write (messages(3),'(1x,a)')  'is not recorded) or Hz (is time is recorded). The user is referred to the manual for'
         Write (messages(4),'(1x,a)')  'details. This feature is convenient to identify those regions of the reciprocal space'
         Write (messages(5),'(1x,a)')  'that might be responsible for the presence of strong noise in the EQCM data.'
         Call info(messages,5)
       Else If (eqcm_data%analysis%type == 'print_eqcm_raw' ) Then
-        Write (messages(1),'(1x,a)')  'This option prints the raw current and/or mass density reported in file DATA_EQCM'
+        Write (messages(1),'(1x,a)')  'This option prints the raw current and/or mass/mass-density reported in file DATA_EQCM'
         Write (messages(2),'(1x,a)')  'for the requested range of CV cycles, as specified by directive "cycles". If "cycles"'
         Write (messages(3),'(1x,a)')  'is not set, the analysis is carried out for all the CV cycles found in the set of data.'
         Write (messages(4),'(1x,a)')  'This capability is convenient to visualise experimental data and identify any problem'
         Write (messages(5),'(1x,a)')  'such as the presence of strong noise.'
         Call info(messages,5)
       Else If (eqcm_data%analysis%type == 'print_eqcm_filter' ) Then
-        Write (messages(1),'(1x,a)')  'This option filters and prints current and/or mass density reported in file DATA_EQCM'
+        Write (messages(1),'(1x,a)')  'This option filters and prints current and/or mass/mass-density reported in file DATA_EQCM'
         Write (messages(2),'(1x,a)')  'for the requested range of CV cycles, as specified by directive "cycles". If "cycles"'
         Write (messages(3),'(1x,a)')  'is not set, the analysis is carried out for all the CV cycles found in the set of data.'
         Write (messages(4),'(1x,a)')  'Filtering is conducted by applying a low-pass Gaussian filter unsing a cutoff value'
@@ -562,7 +570,7 @@ Contains
         Write (messages(4),'(1x,a)')  'are often used to fit calibration coefficients for EQCM devices (see manual).' 
         Call info(messages,4)
       Else If (eqcm_data%analysis%type == 'massogram' ) Then
-        Write (messages(1),'(1x,a)')  'This option prints the rate of mass density as a function of the applied voltage'
+        Write (messages(1),'(1x,a)')  'This option prints the rate of mass/mass-density as a function of the applied voltage'
         Write (messages(2),'(1x,a)')  'for the requested CV cycle range, as specified by directive "cycles". If "cycles"'
         Write (messages(3),'(1x,a)')  'is not set, the analysis is carried out for all CV cycles found in the set of data.'
         Write (messages(4),'(1x,a)')  'Massograms provide a sensitive tool to identify the presence of side reactions' 
@@ -1052,19 +1060,19 @@ Contains
       fft_data%end_current%value=1  
     End If
  
-    If (fft_data%end_mass_frequency%fread) Then
-      Write (messages(1),'(1x,a)') '***Problems: "endpoints_mass_frequency" is the number of mass-frequency '&
+    If (fft_data%end_mass%fread) Then
+      Write (messages(1),'(1x,a)') '***Problems: "endpoints_mass" is the number of mass-frequency '&
                                   'points taken from each extreme'
-      If (fft_data%end_mass_frequency%fail) Then
+      If (fft_data%end_mass%fail) Then
         Write (message,'(2(1x,a))') Trim(error_set_eqcm), 'Wrong (or missing) specification for directive &
-                                   &"endpoints_mass_frequency"'
+                                   &"endpoints_mass"'
         If (fprint) Call info(' ',1)
         If (fprint) Call info(messages,4)
         If (fprint) Call info(' ',1)
         Call error_stop(message)
       Else
-        If (fft_data%end_mass_frequency%value < 1) Then
-          Write (message,'(2(1x,a))') Trim(error_set_eqcm), '"endpoints_mass_frequency" should be larger than 0'
+        If (fft_data%end_mass%value < 1) Then
+          Write (message,'(2(1x,a))') Trim(error_set_eqcm), '"endpoints_mass" should be larger than 0'
           If (fprint) Call info(' ',1)
           If (fprint) Call info(messages,4)
           If (fprint) Call info(' ',1)
@@ -1072,7 +1080,7 @@ Contains
         End If
       End If 
     Else 
-      fft_data%end_mass_frequency%value=1
+      fft_data%end_mass%value=1
     End If
 
   ! Stoichiometric directives
@@ -1227,7 +1235,7 @@ Contains
         If (model_data%multiple_input_atoms%fail) Then
           Write (message,'(2(1x,a))') Trim(error_set_eqcm),&
                                   & 'Wrong (or missing) settings for "multiple_input_atoms" directive.&
-                                  & Is it not too large? It should not exceed 1 millon.'
+                                  & Is it not too large? It should not exceed 1 millon to avoid problems....'
           Call error_stop(message)
         Else
           If (model_data%multiple_input_atoms%value <= 0) Then
@@ -1237,6 +1245,23 @@ Contains
         End If
       Else
         model_data%multiple_input_atoms%value=10000
+      End If
+
+      ! multiple_output_atoms 
+      If (model_data%multiple_output_atoms%fread) Then
+        If (model_data%multiple_output_atoms%fail) Then
+          Write (message,'(2(1x,a))') Trim(error_set_eqcm),&
+                                  & 'Wrong (or missing) settings for "multiple_output_atoms" directive.&
+                                  & Is it not too large? It should not exceed 100 to avoid problems....'
+          Call error_stop(message)
+        Else
+          If (model_data%multiple_output_atoms%value < 2) Then
+            Write (message,'(1x,2a)') Trim(error_set_eqcm), ' Directive "multiple_output_atoms" must be larger than 2'
+            Call error_stop(message)
+          End If
+        End If
+      Else
+        model_data%multiple_output_atoms%value=2
       End If
 
       ! block species components
@@ -1344,6 +1369,17 @@ Contains
           model_data%deposition_level%value=model_data%deposition_level%value*model_data%deposition_level%convert
         End If
       End If
+
+      ! Set if shifting the structure or not
+      If (model_data%shift_structure%fread) Then
+        If (model_data%shift_structure%fail) Then
+          Write (message,'(2(1x,a))') Trim(error_set_eqcm), 'Wrong settings for "shift_structure" directive.'
+          Call error_stop(message)
+        End If
+      Else
+        model_data%shift_structure%stat=.True.
+      End If
+
 
       ! stoichiometry error
       If (model_data%stoichiometry_error%fread) Then
@@ -1528,9 +1564,18 @@ Contains
       eqcm_data%range_cycles%value(2)=eqcm_data%ncycles 
     End If
 
-    If (eqcm_data%analysis%type == 'mass_calibration' .Or. eqcm_data%analysis%type == 'massogram') Then
+    If (eqcm_data%analysis%type == 'mass_calibration') Then
       If ((.Not. eqcm_data%mass_frequency%fread) .Or. (.Not. eqcm_data%current%fread)) Then 
          Write (message,'(8(1x,a))') Trim(error_set), 'No values for mass-frequency and/or current found in', &
+                                 & Trim(data_eqcm),'file. Requested', Trim(eqcm_data%analysis%type),'analysis in file',  & 
+                                 & Trim(set_eqcm),'is not possible.'
+         Call error_stop(message)
+      End If
+    End If
+
+    If (eqcm_data%analysis%type == 'massogram') Then
+      If (.Not. (eqcm_data%mass_frequency%fread .Or. eqcm_data%mass%fread))Then 
+         Write (message,'(8(1x,a))') Trim(error_set), 'No values for mass-frequency and/or mass found in', &
                                  & Trim(data_eqcm),'file. Requested', Trim(eqcm_data%analysis%type),'analysis in file',  & 
                                  & Trim(set_eqcm),'is not possible.'
          Call error_stop(message)
@@ -1545,10 +1590,10 @@ Contains
       End If    
     End If
 
-    If (.Not. eqcm_data%mass_frequency%fread) Then
+    If (.Not. (eqcm_data%mass_frequency%fread .Or. eqcm_data%mass%fread) ) Then
       If (eqcm_data%analysis%type == 'stoichiometry'    .Or.  &
          eqcm_data%analysis%type == 'model_cycled_sample' ) Then
-         Write (message,'(8(1x,a))') Trim(error_set), 'No values for mass-frequency found in', Trim(data_eqcm),&
+         Write (message,'(8(1x,a))') Trim(error_set), 'No values for mass-frequency or mass found in', Trim(data_eqcm),&
                                  &'file. Requested', Trim(eqcm_data%analysis%type),'analysis in file', Trim(set_eqcm),&
                                  &'is not possible.'
         Call error_stop(message)
@@ -1564,13 +1609,13 @@ Contains
         Call error_stop(message)
       End If
     End If
-
+    
     If (eqcm_data%mass_frequency%fread) Then
       If (sauer_data%factor%fread)then  
         Write (messages(1),'(1x,a)')    '****PROBLEMS'
         Write (messages(4),'(3(1x,a))') 'using the Sauerbrey factor defined in', Trim(set_eqcm), 'file.'
 
-        If (system_data%quartz_freq%value <= epsilon(system_data%quartz_freq%value)) Then
+        If (.Not. system_data%quartz_freq%fread) Then
           Write (messages(2),'(3(1x,a))') 'The', Trim(eqcm_data%analysis%type), ' option chosen for EQCM analysis requires the'
           Write (messages(3),'(3(1x,a))') 'convertion of mass-frequency values found in file', Trim(data_eqcm),&
                                         &'to mass-density mass'
@@ -1598,10 +1643,9 @@ Contains
             Call error_stop(message)
           End If
         End If
-
       End If
     End If
-  
+
     ! Stop the execution if filter is the user wants to print raw data but filter_cutoff is turned on
     If (eqcm_data%analysis%type == 'print_eqcm_raw') Then 
       If (filter_data%cutoff%fread) Then 
@@ -1615,7 +1659,7 @@ Contains
     ! Check conditions for spectra and print_eqcm_raw (or print_eqcm_filter)
     If (eqcm_data%analysis%type == 'spectra'  .Or. eqcm_data%analysis%type == 'print_eqcm_raw' .Or. &
                                              eqcm_data%analysis%type == 'print_eqcm_filter') Then
-      If ((.Not. eqcm_data%current%fread) .And. (.Not. eqcm_data%mass_frequency%fread) ) Then
+      If ((.Not. eqcm_data%current%fread) .And. (.Not. eqcm_data%mass_frequency%fread) .And. (.Not. eqcm_data%mass%fread)) Then
          Write (message,'(6(1x,a))') Trim(error_set), 'No values for current nor mass-frequency found in', Trim(data_eqcm),&
                                     &'file. Requested', Trim(eqcm_data%analysis%type), 'analysis is not possible.'
          Call error_stop(message)
@@ -3188,6 +3232,10 @@ Contains
         Read (iunit, Fmt=*, iostat=io) word, T%dft%width_smear%value, T%dft%width_smear%units
         Call set_read_status(word, io, T%dft%width_smear%fread, T%dft%width_smear%fail)
         Call capital_to_lower_case(T%dft%width_smear%units)
+
+      Else If (word(1:length) == 'mixing_scheme') Then 
+        Read (iunit, Fmt=*, iostat=io) word, T%dft%mixing%type
+        Call set_read_status(word, io, T%dft%mixing%fread, T%dft%mixing%fail, T%dft%mixing%type)
       
       Else If (word(1:length) == 'scf_energy_tolerance') Then
         Read (iunit, Fmt=*, iostat=io) word, T%dft%delta_e%value, T%dft%delta_e%units
@@ -3270,6 +3318,13 @@ Contains
         ! Read NGWF setings 
         Call read_dft_ngwf(iunit, T)
 
+      Else If (word(1:length) == '&gcdft') Then
+        Read (iunit, Fmt=*, iostat=io) word
+        Call set_read_status(word, io, T%dft%gc%activate%fread, T%dft%gc%activate%fail)
+        T%dft%gc%activate%stat = .True.
+        ! Read NGWF setings 
+        Call read_gcdft(iunit, T)
+
       Else
         Write (message,'(1x,5a)') Trim(set_error), ' Directive "', Trim(word), '" is not recognised as a valid DFT settings.',&
                                 & ' See manual. Have you properly closed the block with "&end_dft_settings"?'
@@ -3279,6 +3334,67 @@ Contains
      End Do
 
   End Subroutine read_dft_settings
+
+  Subroutine read_gcdft(iunit, T)
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    ! Subroutine to read sub-block &gcdft with settings
+    ! for GC-DFT simulations
+    !
+    ! author    - i.scivetti August 2022
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    Integer(Kind=wi),  Intent(In   ) :: iunit
+    Type(simul_type),  Intent(InOut) :: T
+
+    Character(Len=256) :: word
+    Integer(Kind=wi)   :: length, io
+
+    Character(Len=256) :: message
+    Character(Len=265) :: set_error
+
+    set_error = '***ERROR in sub-block &gcdft (inside &dft_settings):'
+
+    Do
+      Read (iunit, Fmt=*, iostat=io) word
+      Call check_end(io, '&gcdft (inside &dft_settings)')
+      If (io /= 0) Then
+        Write (message,'(2(1x,a))') Trim(set_error), 'It appears the block has not been closed correctly. Use&
+                                  & "&End_gcdft" to close the block. Check if directives are set correctly.'         
+        Call error_stop(message) 
+      End If  
+      Call get_word_length(word,length)
+      Call capital_to_lower_case(word)
+      If (Trim(word)=='&end_gcdft') Then
+        Exit
+      End If
+      Call check_for_rubbish(iunit, '&gcdft')
+
+      If (word(1:1) == '#' .Or. word(1:3) == '   ') Then
+      ! Do nothing if line is a comment of we have an empty line
+      Read (iunit, Fmt=*, iostat=io) word
+
+      Else If (word(1:length) == 'reference_potential') Then
+        Read (iunit, Fmt=*, iostat=io) word, T%dft%gc%reference_potential%value, T%dft%gc%reference_potential%units
+        Call set_read_status(word, io, T%dft%gc%reference_potential%fread, T%dft%gc%reference_potential%fail)
+        Call capital_to_lower_case(T%dft%gc%reference_potential%units)
+
+      Else If (word(1:length) == 'electrode_potential') Then
+        Read (iunit, Fmt=*, iostat=io) word, T%dft%gc%electrode_potential%value, T%dft%gc%electrode_potential%units
+        Call set_read_status(word, io, T%dft%gc%electrode_potential%fread, T%dft%gc%electrode_potential%fail)
+        Call capital_to_lower_case(T%dft%gc%electrode_potential%units)
+
+      Else If (word(1:length) == 'electron_threshold') Then
+        Read (iunit, Fmt=*, iostat=io) word, T%dft%gc%electron_threshold%value
+        Call set_read_status(word, io, T%dft%gc%electron_threshold%fread, T%dft%gc%electron_threshold%fail)
+
+      Else
+        Write (message,'(1x,5a)') Trim(set_error), ' Directive "', Trim(word), '" is not recognised as a valid GC-DFT settings.',&
+                                & ' See manual. Have you properly closed the block with "&end_gcdft"?'
+        Call error_stop(message)
+      End If
+
+     End Do
+
+  End Subroutine 
 
   Subroutine read_basis_set(iunit, simulation_data)
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

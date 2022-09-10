@@ -31,7 +31,7 @@ Module simulation_tools
   Private
 
   ! Maximum directives for simulations
-  Integer(Kind=wi), Parameter, Public  :: max_directives=200 
+  Integer(Kind=wi), Parameter, Public  :: max_directives=100 
   ! Error in the initialization of magnetization                            
   Real(Kind=wp), Parameter, Public :: error_mag = 0.00001_wp
 
@@ -42,7 +42,7 @@ Module simulation_tools
     Integer(Kind=wi) :: atomic_number
     Real(Kind=wp)    :: valence_electrons
   End Type component_in_block
- 
+
   ! NGWF type 
   Type :: type_ngwf
     Character(Len=8) :: tag
@@ -54,7 +54,6 @@ Module simulation_tools
   ! Type for pseudopotentials 
   Type :: type_pseudo
     Character(Len=256) :: file_name
-    Character(Len=256) :: basis
     Character(Len=256) :: potential 
     Character(Len=8)   :: tag
     Character(Len=2)   :: element
@@ -63,13 +62,26 @@ Module simulation_tools
   ! Type for extra directives 
   Type, Public :: type_extra 
     Character(Len=256) :: array(max_directives)
+    Character(Len=256) :: key(max_directives)
+    Character(Len=256) :: set(max_directives)
     Integer(Kind=wi)   :: N0
   End Type type_extra
+
+  ! type for reference data
+  Type, Public :: type_ref_data
+    Character(Len=256) :: key
+    Character(Len=16)  :: keytype
+    Character(Len=256) :: msn
+    Character(Len=256) :: set_default
+    Character(Len=16)  :: units
+    Integer(Kind=wi)   :: N0
+  End Type type_ref_data
 
   ! Type for basis_set
   Type :: type_basis
     Character(Len=8)   :: tag
     Character(Len=2)   :: element
+    Character(Len=256) :: basis
     Character(Len=256) :: type
   End Type type_basis
 
@@ -96,6 +108,13 @@ Module simulation_tools
     Real(Kind=wp)     :: value
   End Type type_mass
 
+  ! Type for GC-DFT
+  Type :: type_gcdft 
+    Type(in_logic)  ::  activate     
+    Type(in_param)  ::  reference_potential    
+    Type(in_param)  ::  electrode_potential
+    Type(in_scalar) ::  electron_threshold    
+  End Type
  
   ! Type for DFT settings
   Type :: dft_type
@@ -126,6 +145,8 @@ Module simulation_tools
     Type(in_string) :: smear
     ! Width for smearing
     Type(in_param)  :: width_smear
+    ! Mixing 
+    Type(in_string) :: mixing
     ! SFC steps
     Type(in_integer) :: scf_steps
     ! Energy convergence
@@ -154,6 +175,10 @@ Module simulation_tools
     Type(in_logic)   :: ot
     ! Ensemble DFT (EDFT), only valid for CASTEP and ONETEP
     Type(in_logic)   :: edft 
+
+    ! GC-DFT
+    Type(type_gcdft) :: gc
+
     ! Bands paralellization, only for VASP
     Type(in_integer) :: npar
     ! kpoints paralellization, only for VASP
@@ -248,7 +273,6 @@ Module simulation_tools
     ! Set directives
     Type(type_extra),  Public :: set_directives
 
-
   Contains
     Private
     Procedure, Public  :: init_input_dft_variables    =>  allocate_input_dft_variables
@@ -257,7 +281,10 @@ Module simulation_tools
 
   End Type simul_type
 
-  Public :: check_extra_directives, record_directive, scan_extra_directive, check_initial_magnetization
+  Public :: check_extra_directives, record_directive, scan_extra_directive
+  Public :: check_settings_single_extra_directive, check_settings_set_extra_directives
+  Public :: set_reference_database
+  Public :: check_initial_magnetization
   Public :: print_warnings
   
 Contains
@@ -286,6 +313,13 @@ Contains
       Call error_stop(message)
     End If
 
+    !Set to False just in case
+    T%dft%basis_info%stat=.False. 
+    T%dft%pp_info%stat=.False. 
+    T%dft%mag_info%stat=.False.
+    T%dft%hubbard_info%stat=.False.
+    T%dft%ngwf_info%stat=.False.
+
   End Subroutine allocate_input_dft_variables
 
   Subroutine allocate_input_motion_variables(T)
@@ -308,6 +342,9 @@ Contains
                                & for simulations'
       Call error_stop(message)
     End If
+
+    !Set to False just in case
+    T%motion%mass_info%stat=.False.
 
   End Subroutine allocate_input_motion_variables
 
@@ -355,24 +392,30 @@ Contains
 
   End Subroutine cleanup
 
-  
-  Subroutine check_extra_directives(sentence, symbol, code, ic)
+
+  Subroutine check_extra_directives(sentence, key, set, symbol, code)
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     ! Check the structure of sub-block &extra_directives 
     !
-    ! author    - i.scivetti Jul 2021
+    ! author        - i.scivetti Jul 2021
+    ! modification  - i.scivetti Aug  2022 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     Character(Len=256), Intent(In   ) :: sentence
+    Character(Len=256), Intent(  Out) :: key      
+    Character(Len=256), Intent(  Out) :: set      
     Character(Len=*),   Intent(In   ) :: symbol 
     Character(Len=*),   Intent(In   ) :: code
-    Integer(Kind=wi),   Intent(In   ) :: ic
 
+    Character(Len=256)  :: word 
     Character(Len=256)  :: messages(4)
+    Integer(Kind=wi)    :: io  
     Logical             :: error
 
     error=.False.
+    key=' '
+    set=' ' 
 
-    Write (messages(1),'(1x,a,i3)') '***ERROR: in block &extra_directives: user-defined directive ', ic
+    Write (messages(1),'(1x,a)') '***ERROR: in block &extra_directives: user-defined directive'
     Write (messages(2),'(1x,a)')     Trim(Adjustl(sentence))
     Write (messages(4),'(1x,a)')    'Please check. Sentences starting with "#" are assumed as comments.'
 
@@ -419,6 +462,21 @@ Contains
       Call info(messages, 3)
       Call error_stop(' ')
     End If
+   
+    If (Index(Trim(Adjustl(sentence)), '#') == 0) Then
+      Read(sentence, Fmt='(a)') word      
+      Call remove_symbols(word,Trim(symbol))
+      Read(word, Fmt=*, iostat=io) key, set 
+      If (is_iostat_end(io)) Then
+        Call info(' ', 1)       
+        Write (messages(1), '(1x,3a)') '***ERROR in sub-bock &extra_directives: problems in the definiton of directive "',&
+                                & Trim(key),'". Please check format, syntax and any missing information.'
+        Call info(messages, 1)
+        Call error_stop(' ')
+      End If
+      Call capital_to_lower_case(key)
+      Call capital_to_lower_case(set)    
+    End If
 
   End Subroutine check_extra_directives  
 
@@ -441,39 +499,33 @@ Contains
 
   End Subroutine record_directive
 
-  Subroutine scan_extra_directive(sentence, set_directives, symbol, found, tag)
+  Subroutine scan_extra_directive(sentence, set_directives, found)
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     ! Subroutine to scan the directives defined in block &extra_directives against
     ! the directives set from the definitions of &block_simulation_settings 
     ! 
-    ! author    - i.scivetti July 2021
+    ! author        - i.scivetti July 2021
+    ! modification  - i.scivetti Aug  2022 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     Character(Len=*), Intent(In   ) :: sentence 
     Type(type_extra), Intent(In   ) :: set_directives
-    Character(Len=*), Intent(In   ) :: symbol
     Logical,          Intent(InOut) :: found
-    Character(Len=*), Intent(  Out) :: tag
    
-    Character(Len=256) :: word, word2, dir
+    Character(Len=256) :: word
     Integer(Kind=wi)   :: j
 
-    word=Trim(Adjustl(sentence))
-    Call remove_symbols(word,Trim(symbol))        
-    Read(word,Fmt=*) tag
-    Call capital_to_lower_case(word)
-    Read(word,Fmt=*) dir
     j=1
     Do While (j <= set_directives%N0 .And. (.Not. found))
-      word2=set_directives%array(j)
-      Call capital_to_lower_case(word2)
-      If (Trim(dir) == Trim(word2)) Then 
+      word=set_directives%array(j)
+      Call capital_to_lower_case(word)
+      If (Trim(sentence) == Trim(word)) Then 
         found=.True.
       End If
       j=j+1
     End Do
 
   End Subroutine scan_extra_directive
-  
+
   Subroutine check_initial_magnetization(net_elements, list_tag, N0, mag_ini, target_mag)
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     ! Subroutine to print the initial magnetic moments of the resulting models. 
@@ -542,6 +594,306 @@ Contains
     Call info(message,dim)
 
   End Subroutine print_warnings
+
+  Subroutine check_settings_set_extra_directives(ref_data, num_ref_data, extra_directives, exception_keys, &
+                                          & number_exceptions, extradir_header)
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    ! Check if reference extra directives (ref_data) are defined or not within the
+    ! &extra_directives block. If defined, check if the definition is correct.
+    ! If there are not defined, print a message advising the user to consider
+    ! the directive. Number_exceptions is the number of keywords that will not 
+    ! be checked, and these keyword are defined in exception_keys
+    !
+    ! author    - i.scivetti August 2022
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    Type(type_ref_data), Intent(In   ) :: ref_data(:)
+    Integer(Kind=wi),    Intent(In   ) :: num_ref_data
+    Type(type_extra),    Intent(In   ) :: extra_directives
+    Character(Len=*),    Intent(In   ) :: exception_keys(:)
+    Integer(Kind=wi),    Intent(In   ) :: number_exceptions
+    Logical,             Intent(InOut) :: extradir_header
+
+    Logical             :: found, print_msn
+    Character(Len=256)  :: set, msn
+    Character(Len=256)  :: messages(50)
+    Integer(Kind=wi)    :: j, k, indx, iex
+
+    indx=0
+
+    Do k= 1, num_ref_data
+      found=.False.
+      iex=1 
+
+      Do While (iex <= number_exceptions .And. (.Not. found)) 
+        If (Trim(ref_data(k)%key) == Trim(exception_keys(iex))) Then
+          found=.True.
+        End If
+        iex=iex+1
+      End Do
+
+      If (.Not. found) Then
+
+        j=1
+        Do While (j <= extra_directives%N0 .And. (.Not. found))
+          If (Trim(ref_data(k)%key) == Trim(extra_directives%key(j))) Then
+            found=.True.
+            set=extra_directives%set(j)
+          End If
+          j=j+1
+        End Do
+
+        Call extra_directive_setting(ref_data(k), set, found, print_msn, msn)
+        If (print_msn) Then
+           indx=indx+1
+           messages(indx)=msn     
+        End If  
+
+      End If
+    End Do
+    
+    If (indx > 0) Then
+      If (.Not. extradir_header) Then
+        Call info(' The following extra keywords can be defined in the &extra_directives sub-block:', 1)
+        extradir_header=.True.
+      End If
+      Call info(messages, indx)
+    End If  
+
+  End Subroutine check_settings_set_extra_directives
+
+  Subroutine check_settings_single_extra_directive(single_dir, ref_data, num_ref_data, extra_directives,&
+                                                 & extradir_header, condition)
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    ! The same as check_settings_set_extra_directives but for a single selected
+    ! keyword, given by single_dir
+    !
+    ! author    - i.scivetti August 2022
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    Character(Len=*),    Intent(In   ) :: single_dir
+    Type(type_ref_data), Intent(In   ) :: ref_data(:)
+    Integer(Kind=wi),    Intent(In   ) :: num_ref_data
+    Type(type_extra),    Intent(In   ) :: extra_directives
+    Logical,             Intent(InOut) :: extradir_header
+    Character(Len=*), Optional,  Intent(In   ) :: condition
+
+    Logical             :: found, print_msn
+    Type(type_ref_data) :: single_ref_data
+    Character(Len=256)  :: set
+    Character(Len=256)  :: message
+    Integer(Kind=wi)    :: j
+
+    found=.False.
+    j=1
+    Do While (j <= num_ref_data .And. (.Not. found))
+      If (Trim(single_dir) == Trim(ref_data(j)%key)) Then
+        found=.True.
+        single_ref_data=ref_data(j)
+      End If
+      j=j+1
+    End Do
+
+    found=.False.
+    j=1
+    Do While (j <= extra_directives%N0 .And. (.Not. found))
+      If (Trim(single_dir) == Trim(extra_directives%key(j))) Then
+        found=.True.
+        set=extra_directives%set(j)
+      End If
+      j=j+1
+    End Do
+
+    If (Present(condition)) Then
+      Call extra_directive_setting(single_ref_data, set, found, print_msn, message, condition)
+    Else
+      Call extra_directive_setting(single_ref_data, set, found, print_msn, message)
+    End If        
+   
+    If (print_msn) Then
+      If (.Not. extradir_header) Then
+        Call info(' The following extra keywords can be defined in the &extra_directives sub-block:', 1)
+        extradir_header=.True.
+      End If
+      Call info(message, 1)
+    End If  
+
+  End Subroutine check_settings_single_extra_directive
+
+
+  Subroutine extra_directive_setting(ref_data, set, found, print_msn, msn, condition)
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    ! Check what to print or not for a given directive, with name ref_data%key  
+    !
+    ! author    - i.scivetti August 2022
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+    Type(type_ref_data), Intent(In   ) :: ref_data
+    Character(Len=*),    Intent(In   ) :: set
+    Logical,             Intent(In   ) :: found
+    Logical,             Intent(  Out) :: print_msn
+    Character(Len=*),    Intent(  Out) :: msn
+    Character(Len=*),  Optional,  Intent(In   ) :: condition
+
+    Integer(Kind=wi)    :: extra_int, io
+    Logical             :: extra_logic    
+    Real(Kind=wp)       :: extra_real
+    Character(Len=256)  :: action_dir
+
+    print_msn=.False.
+
+    If (Present(condition))then
+      action_dir='complain'
+    Else
+      action_dir='allow'
+    End If    
  
-  
+    If (found) Then
+      If (Trim(ref_data%keytype) == 'integer') Then 
+        Read(set, Fmt=*, iostat=io) extra_int
+      Else If (Trim(ref_data%keytype) == 'logical') Then
+        Read(set, Fmt=*, iostat=io) extra_logic
+      Else If (Trim(ref_data%keytype) == 'real') Then
+        Read(set, Fmt=*, iostat=io) extra_real
+      End If
+      If (io/=0) Then
+        print_msn=.True.
+        Write (msn, '(1x,5a)') '  ***ERROR: keyword "', Trim(ref_data%key),&
+                                  & '" must be ', Trim(ref_data%keytype),&
+                                  & '. PLEASE FIX THIS KEYWORD. To keep the already generated models, &
+                                  & change the analysis directive to "hpc_simulation_files" and rerun.'
+      End If
+      If (Trim(action_dir) == 'complain') Then
+        print_msn=.True.
+        Write (msn, '(1x,5a)') '  ***ERROR: keyword "', Trim(ref_data%key),&
+                                  & '" is not compatible with the option of "', Trim(condition),&
+                                  & '". PLEASE FIX THIS KEYWORD. To keep the already generated models,&
+                                  & change the analysis directive to "hpc_simulation_files" and rerun.'
+      End If
+    Else
+      If (Trim(action_dir) == 'allow') Then
+        print_msn=.True.
+        Write (msn, '(1x,5a,1x,a)') '  * ', Trim(ref_data%key), Trim(ref_data%msn),&
+                               & ' Default is ', Trim(ref_data%set_default), Trim(ref_data%units)
+      End If
+    End If
+
+  End Subroutine extra_directive_setting
+
+
+  Subroutine set_reference_database(ref_database, num_ref_data, code, functionality)
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    ! Set reference database for keywords compatible with the requested
+    ! code and functionality. Info read in &extra_directives will be
+    ! compared against the following settings
+    !
+    ! author    - i.scivetti August 2022
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    Type(type_ref_data), Intent(  Out) :: ref_database(:)
+    Integer(Kind=wi),    Intent(  Out) :: num_ref_data
+    Character(Len=*),    Intent(In   ) :: code
+    Character(Len=*),    Intent(In   ) :: functionality
+
+    If (Trim(code) == 'ONETEP') Then
+      If (Trim(functionality) == 'EDFT') Then
+
+        ref_database(1)%key='edft_maxit'
+        ref_database(1)%keytype='integer'
+        ref_database(1)%msn=': maximum number of inner loop iterations.'
+        ref_database(1)%set_default='10'
+        ref_database(1)%units=' '
+
+        ref_database(2)%key='edft_write_occ'
+        ref_database(2)%keytype='logical'
+        ref_database(2)%msn=': writes the occupancies and the energy levels to file with .occ extension.'
+        ref_database(2)%set_default='False'
+        ref_database(2)%units=' '
+
+        ref_database(3)%key='edft_trial_step'
+        ref_database(3)%keytype='real'
+        ref_database(3)%msn=': sets the value of lambda, fixing the step size of the inner loop&
+                           & and switching off the line search for optimum. If negative the normal line search is used.'
+        ref_database(3)%set_default='-1'
+        ref_database(3)%units=' '
+
+        ref_database(4)%key='edft_free_energy_thres'
+        ref_database(4)%keytype='real'
+        ref_database(4)%msn=': maximum difference in the Helmholtz free energy functional per atom between two&
+                               & consecutive iterations.'
+        ref_database(4)%set_default='1.0E-6'
+        ref_database(4)%units='Hartree'
+
+        ref_database(5)%key='edft_energy_thres'
+        ref_database(5)%keytype='real'
+        ref_database(5)%msn=': maximum difference in the energy functional per atom between two consecutive iterations.'
+        ref_database(5)%set_default='1.0E-6'
+        ref_database(5)%units='Hartree'
+
+        ref_database(6)%key='edft_entropy_thres'
+        ref_database(6)%keytype='real'
+        ref_database(6)%msn=': maximum difference in the entropy per atom between two consecutive iterations.'
+        ref_database(6)%set_default='1.0E-6'
+        ref_database(6)%units='Hartree'
+
+        ref_database(7)%key='edft_rms_gradient_thres'
+        ref_database(7)%keytype='real'
+        ref_database(7)%msn=': maximum RMSgradient.'
+        ref_database(7)%set_default='1.0E-4'
+        ref_database(7)%units='Hartree'
+
+        ref_database(8)%key='edft_commutator_thres'
+        ref_database(8)%keytype='real'
+        ref_database(8)%msn=': maximum value of the Hamiltonian-Kernel commutator.'
+        ref_database(8)%set_default='1.0E-5'
+        ref_database(8)%units='Hartree'
+        
+        ref_database(9)%key='edft_fermi_thres'
+        ref_database(9)%keytype='real'
+        ref_database(9)%msn=': maximum change in the Fermi energy between two consecutive iterations.'
+        ref_database(9)%set_default='1.0E-3'
+        ref_database(9)%units='Hartree'
+        
+        ref_database(10)%key='edft_round_evals'
+        ref_database(10)%keytype='integer'
+        ref_database(10)%msn=': when set to n>0, the occupancies that result from the Fermi-Dirac distribution&
+                                  & are rounded to n significant figures.'
+        ref_database(10)%set_default='-1'
+        ref_database(10)%units=' '
+
+        ref_database(11)%key='edft_max_step'
+        ref_database(11)%keytype='real'
+        ref_database(11)%msn=': maximum step during line search.'
+        ref_database(11)%set_default='1.0'
+        ref_database(11)%units=' '
+
+        ref_database(12)%key='ngwf_cg_rotate'
+        ref_database(12)%keytype='logical'
+        ref_database(12)%msn=': rotation of eigenvectors to the new NGWF representation once these are updated.'
+        ref_database(12)%set_default='False'
+        ref_database(12)%units=' '
+
+        ref_database(13)%key='edft_ham_diis_size'
+        ref_database(13)%keytype='integer'
+        ref_database(13)%msn=': maximum number of Hamiltonians used from previous iterations to&
+                               & generate the new guess through Pulay mixing.'
+        ref_database(13)%set_default='10'
+        ref_database(13)%units=' '
+
+        ref_database(14)%key='write_hamiltonian'
+        ref_database(14)%keytype='logical'
+        ref_database(14)%msn=': write the Hamiltonian matrix on a .ham file.'
+        ref_database(14)%set_default='False'
+        ref_database(14)%units=' '
+
+        ref_database(15)%key='read_hamiltonian'
+        ref_database(15)%keytype='logical'
+        ref_database(15)%msn=': read the Hamiltonian matrix from a .ham file.'
+        ref_database(15)%set_default='False'
+        ref_database(15)%units=' '
+
+        num_ref_data=15
+
+      End If
+    End If
+
+  End Subroutine set_reference_database
+
 End Module simulation_tools

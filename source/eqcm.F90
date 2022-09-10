@@ -52,6 +52,7 @@ Module eqcm
                            wp 
   
   Use process_data, Only : capital_to_lower_case, &
+                           detect_rubbish,        &
                            remove_symbols,        &
                            remove_front_tabs
   Use unit_output,  Only : error_stop, &
@@ -115,6 +116,7 @@ Module eqcm
     Type(exp_data),   Public  :: time
     Type(exp_data),   Public  :: voltage 
     Type(exp_data),   Public  :: mass_frequency
+    Type(exp_data),   Public  :: mass 
     Type(exp_data),   Public  :: resistance
 
     ! Sensitivity factor (Volts to frequency)
@@ -246,6 +248,16 @@ Contains
       T%mass_frequency%value = 0.0_wp
     End If
 
+    If (T%mass%fread) Then
+      Allocate(T%mass%value(maxpoints, 2,ncycles) , Stat=fail2)
+      If (fail2 > 0) Then
+        Write (message,'(2(1x,a))') Trim(error), 'EQCM mass array&
+                                  & (subroutine allocate_eqcm_data_arrays)'
+        Call error_stop(message)
+      End If
+      T%mass%value = 0.0_wp
+    End If
+
     If (T%time%fread) Then
       Allocate(T%time%value(maxpoints, 2,ncycles)   , Stat=fail2)
       If (fail2 > 0) Then
@@ -280,6 +292,10 @@ Contains
 
     If (Allocated(T%mass_frequency%value)) Then
       Deallocate(T%mass_frequency%value)
+    End If
+
+    If (Allocated(T%mass%value)) Then
+      Deallocate(T%mass%value)
     End If
 
     If (Allocated(T%current%value)) Then
@@ -412,16 +428,17 @@ Contains
 
     Do While (cont)
       Read (iunit,'(a)', iostat=io) first_line
+      Call detect_rubbish(first_line, unit_name)
       Call remove_front_tabs(first_line)
       first_line=Trim(Adjustl(first_line))
       If (.Not. is_iostat_end(io)) Then
-        If ( (first_line(1:1) == ' ')) Then
-        Else
+         If ( (first_line(1:1) == ' ')) Then
+         Else
           Read (first_line, * , iostat=io2) var 
           If (io2 == 0) Then
             cont=.False. 
           End If
-        End If
+         End If
       Else If (is_iostat_end(io)) Then
         Write (message,'(2(1x,a))') Trim(error_set), 'Empty file? Also check the use commas&
                                   & to represent values with decimals. If so, commas should be replaced with points'
@@ -557,7 +574,27 @@ Contains
         eqcm_data%charge%units    = 'mC'
         ic=ic+1
 
-      Else If (Index(variables(i),'frequency') /= 0  .Or. Index(variables(i),'mass') /= 0) Then
+      Else If (Index(variables(i),'mass') /= 0) Then
+        heads(i)= 'mass'
+        eqcm_data%mass%col     = i
+        eqcm_data%mass%fread    = .True.
+        eqcm_data%mass%units    = units(i)
+        If (eqcm_data%mass%units == 'mg') Then
+          eqcm_data%mass%convert  = 1000000.0_wp
+        Else If (eqcm_data%mass%units   == 'ug') Then
+          eqcm_data%mass%convert  = 1000.0_wp
+        Else If (eqcm_data%mass%units   == 'ng') Then
+          eqcm_data%mass%convert  = 1.0_wp
+        Else
+          Write (message,fmt1) Trim(error_set), 'Specified units "', Trim(eqcm_data%mass%units),&
+                                    & '" for mass is not valid. Options: mg (miligrams), ug (micrograms) or ng (nanograms).',&
+                                    & check_header 
+          Call error_stop(message)
+        End If
+        eqcm_data%charge%units    = 'ng'
+        ic=ic+1
+
+      Else If (Index(variables(i),'frequency') /= 0) Then 
         heads(i)= 'mass-frequency'
         eqcm_data%mass_frequency%col  = i
         eqcm_data%mass_frequency%fread = .True.
@@ -566,7 +603,7 @@ Contains
           eqcm_data%mass_frequency%convert  = 1.0_wp
         Else If (eqcm_data%mass_frequency%units   == 'v') Then
           If (eqcm_data%V_to_Hz%value <= epsilon(eqcm_data%V_to_Hz%value)) Then
-            Write (message,'(1x,a)') 'Units of mass frequency are given in Volts,&
+            Write (message,'(1x,a)') 'Units of mass-frequency are given in Volts,&
                                     & and this requires of the V_to_Hz conversion factor.'
             Call info(message,1) 
             Write (message,'(1x,a)') '***ERROR - No specified value of V_to_Hz in file SET_EQCM.' 
@@ -576,7 +613,7 @@ Contains
           End If 
         Else
           Write (message,fmt1) Trim(error_set), 'Specified units "', Trim(eqcm_data%mass_frequency%units), &
-                                    & '" for mass frequency is not valid. Options: V or Hz.', check_header
+                                    & '" for mass-frequency is not valid. Options: V or Hz.', check_header
           Call error_stop(message)
         End If
         eqcm_data%mass_frequency%units = 'Hz'
@@ -648,6 +685,19 @@ Contains
       End Do
     End Do
 
+    If (eqcm_data%mass_frequency%fread .And. eqcm_data%mass%fread) Then
+      Call info(' ', 1)
+      Write (messages(1),'(1x,a)')      '*** IMPORTANT **************************************'
+      Write (messages(2),'(1x,a)')      '*** Mass-frequency and mass have both been recorded.'
+      If (eqcm_data%analysis%type == 'mass_calibration' ) Then
+        Write (messages(3),'(1x,a)')    '*** The requested analysis will be executed using mass-frequency'
+      Else        
+        Write (messages(3),'(1x,a)')    '*** The requested analysis will be executed using mass'
+      End If
+      Write (messages(4),'(1x,a)')      '****************************************************'
+      Call info(messages, 4)
+    End If
+
   End Subroutine eqcm_variables_units
 
 
@@ -677,7 +727,7 @@ Contains
     Real(Kind=wp)  :: v(3), var, vchange
     Real(Kind=wp)  :: vstore(maxdim)
 
-    Character(Len= 64) :: error_set 
+    Character(Len= 64) :: error_set
     Logical :: lv(3)
     Logical :: lsteps, lcycles, lcvloop
     Logical :: lendset, cont, read_header
@@ -720,8 +770,8 @@ Contains
           Call remove_front_tabs(first_line)
           first_line=Trim(Adjustl(first_line))
           If (.Not. is_iostat_end(ioh)) Then
-            If ( (first_line(1:1) == ' ')) Then
-            Else
+              If ( (first_line(1:1) == ' ')) Then
+              Else
               Read (first_line, * , iostat=ioh2) var
               If (ioh2 == 0) Then
                 cont=.False. 
@@ -753,7 +803,6 @@ Contains
             Call error_stop(message)
           End If 
         End Do
-      
         iclc=1
         vstore=0.0_wp
  
@@ -762,6 +811,7 @@ Contains
             lv=.False.
             Do While (cont)
               Read (iunit, '(a)', iostat=io(1)) line(1)
+              Call detect_rubbish(line(1), unit_name)
               Call remove_front_tabs(line(1))
               line(1)=Trim(Adjustl(line(1)))
               If (.Not. is_iostat_end(io(1))) Then
@@ -821,6 +871,7 @@ Contains
                 cont=.True.
                 Do While (cont)
                   Read (iunit, '(a)', iostat=io(k)) line(k)
+                  Call detect_rubbish(line(k), unit_name)
                   Call remove_front_tabs(line(k))
                   line(k)=Trim(Adjustl(line(k)))
                   linesback=linesback+1
@@ -952,6 +1003,10 @@ Contains
                   If (eqcm_data%mass_frequency%fread) Then
                     eqcm_data%mass_frequency%value(k,j,i) = eqcm_data%mass_frequency%convert*&
                                                     & eqcm_data%whole_set(eqcm_data%mass_frequency%col, k, j, i)
+                  End If
+                  If (eqcm_data%mass%fread) Then
+                    eqcm_data%mass%value(k,j,i) = eqcm_data%mass%convert*&
+                                                 & eqcm_data%whole_set(eqcm_data%mass%col, k, j, i)
                   End If
 
                   cont=.False.
@@ -1171,7 +1226,7 @@ Contains
   Subroutine eqcm_spectra(eqcm_data,fft_data, files)
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     ! Perform spectra analysis for the range of cycles selected in SET_EQCM.
-    ! If EQCM mass-frequency has been recorded in DATA_EQCM, results are 
+    ! If EQCM mass/mass-frequency has been recorded in DATA_EQCM, results are 
     ! printed to SPEC_MASS.
     ! If EQCM current has been recorded in DATA_EQCM, results are printed 
     ! to SPEC_CURRENT.
@@ -1201,12 +1256,20 @@ Contains
                                & fft_data%end_current%value
       Call info(message,1)
     End If
-    If (eqcm_data%mass_frequency%fread) Then
-      Write (message,'(1x,a,i4)') '- data points to set padding (mass-frequency) ', &
-                               & fft_data%end_mass_frequency%value
+
+    If (eqcm_data%mass%fread) Then
+      Write (message,'(1x,a,i4)') '- data points to set padding (mass)           ', &
+                               & fft_data%end_mass%value
       Call info(message,1)
+    Else    
+      If (eqcm_data%mass_frequency%fread) Then
+        Write (message,'(1x,a,i4)') '- data points to set padding (mass-frequency) ', &
+                                 & fft_data%end_mass%value
+        Call info(message,1)
+      End If
     End If
-    fft_data%endpoints=max(fft_data%end_mass_frequency%value, fft_data%end_current%value)
+
+    fft_data%endpoints=max(fft_data%end_mass%value, fft_data%end_current%value)
 
     Write (messages(1),'(a)') '  '
     If (eqcm_data%range_cycles%value(1)==eqcm_data%range_cycles%value(2)) Then
@@ -1218,7 +1281,7 @@ Contains
     Call info(messages,2)
  
 
-    If (eqcm_data%mass_frequency%fread) Then
+    If (eqcm_data%mass_frequency%fread .Or. eqcm_data%mass%fread) Then
       ! Open file SPEC_MASS_FREQUENCY
       Open(Newunit=files(FILE_SPEC_MASS)%unit_no, File=files(FILE_SPEC_MASS)%filename, Status='Replace')
       unit_mass_freq=files(FILE_SPEC_MASS)%unit_no
@@ -1231,14 +1294,14 @@ Contains
     End If
 
     If (eqcm_data%time%fread) Then
-      If (eqcm_data%mass_frequency%fread) Then
+      If (eqcm_data%mass_frequency%fread .Or. eqcm_data%mass%fread) Then
         Write (unit_mass_freq,'(a,8x,a)') '# Frequency [Hz]', 'Magnitude [a.u.]'
       End If
       If (eqcm_data%current%fread) Then
         Write (unit_current,  '(a,8x,a)') '# Frequency [Hz]', 'Magnitude [a.u.]' 
       End If
     Else
-      If (eqcm_data%mass_frequency%fread) Then
+      If (eqcm_data%mass_frequency%fread .Or. eqcm_data%mass%fread) Then
         Write (unit_mass_freq,'(a,8x,a)') '# Inverse of voltage [1/V]', 'Magnitude [a.u.]' 
       End If
       
@@ -1250,7 +1313,7 @@ Contains
 
     Do i = eqcm_data%range_cycles%value(1), eqcm_data%range_cycles%value(2) 
       Do j= 1, 2
-        If (eqcm_data%mass_frequency%fread) Then
+        If (eqcm_data%mass_frequency%fread .Or. eqcm_data%mass%fread) Then
           Write (unit_mass_freq,'(a,i3,3x,2a)') '# Cycle ', i,  'Voltage sweep: ', Trim(eqcm_data%label_leg(j,i))
         End If
         If (eqcm_data%current%fread) Then
@@ -1279,23 +1342,34 @@ Contains
             Call fft_spectrum(fft_data)
             Call print_spectrum(unit_current,fft_data)
           End If
-          If (eqcm_data%mass_frequency%fread) Then
-            Call fft_setup(fft_data, npoints, eqcm_data%mass_frequency%value(:,j,i), domain, fft_data%end_mass_frequency%value)
+          If (eqcm_data%mass%fread) Then
+            Call fft_setup(fft_data, npoints, eqcm_data%mass%value(:,j,i), domain, fft_data%end_mass%value)
             Call fft_spectrum(fft_data)
             Call print_spectrum(unit_mass_freq,fft_data)
+          Else        
+            If (eqcm_data%mass_frequency%fread) Then
+              Call fft_setup(fft_data, npoints, eqcm_data%mass_frequency%value(:,j,i), domain, fft_data%end_mass%value)
+              Call fft_spectrum(fft_data)
+              Call print_spectrum(unit_mass_freq,fft_data)
+            End If
           End If
+
           ! Deallocate
           Deallocate(fft_data%magnitude)
           Deallocate(fft_data%rec_domain)
           Deallocate(fft_data%array)
         Else
-          If (eqcm_data%mass_frequency%fread) Then
-            Write (message, '(a,i3,a)') ' *** WARNING for cycle ', i, ': FFT problems with mass-frequency.'
-            Call info(message, 1)
-            Write (unit_mass_freq,'(a)')   '# Either no data or number of the EQCM points is not sufficient for the '   
-            Write (unit_mass_freq,'(2a)')  '# choice of endpoints_mass_frequency in ', Trim(files(FILE_SET_EQCM)%filename)
-            Write (unit_mass_freq,'(a)')   '  '
+          If (eqcm_data%mass%fread) Then
+          Else  
+            If (eqcm_data%mass_frequency%fread) Then
+              Write (message, '(a,i3,a)') ' *** WARNING for cycle ', i, ': FFT problems with mass-frequency.'
+              Call info(message, 1)
+              Write (unit_mass_freq,'(a)')   '# Either no data or number of the EQCM points is not sufficient for the '   
+              Write (unit_mass_freq,'(2a)')  '# choice of endpoints_mass in ', Trim(files(FILE_SET_EQCM)%filename)
+              Write (unit_mass_freq,'(a)')   '  '
+            End If
           End If
+
           If (eqcm_data%current%fread) Then
             Write (message, '(a,i3,a)') ' *** WARNING for cycle ', i, ': FFT problems with current.'
             Call info(message, 1)
@@ -1308,18 +1382,18 @@ Contains
     End Do
     
     Call info(' ', 1)
-    If (eqcm_data%mass_frequency%fread .And. eqcm_data%current%fread) Then
+    If ((eqcm_data%mass_frequency%fread .Or. eqcm_data%mass%fread) .And. eqcm_data%current%fread) Then
       Write (messages(1),'(4(1x,a))') 'Print results to files', Trim(FOLDER_ANALYSIS)//'/'//Trim(files(FILE_SPEC_MASS)%filename),&
                                     & 'and', Trim(FOLDER_ANALYSIS)//'/'//Trim(files(FILE_SPEC_CURRENT)%filename) 
-    Else If (eqcm_data%mass_frequency%fread .And. (.Not. eqcm_data%current%fread)) Then
+    Else If ((eqcm_data%mass_frequency%fread .Or. eqcm_data%mass%fread) .And. (.Not. eqcm_data%current%fread)) Then
       Write (messages(1),'(2(1x,a))') 'Print results to file', Trim(FOLDER_ANALYSIS)//'/'//Trim(files(FILE_SPEC_MASS)%filename)
-    Else If ((.Not. eqcm_data%mass_frequency%fread) .And. eqcm_data%current%fread) Then
+    Else If ((.Not. (eqcm_data%mass_frequency%fread .Or. eqcm_data%mass%fread)) .And. eqcm_data%current%fread) Then
       Write (messages(1),'(2(1x,a))') 'Print results to files', Trim(FOLDER_ANALYSIS)//'/'//Trim(files(FILE_SPEC_CURRENT)%filename) 
     End If
     Call info(messages,1)
 
     ! Close files 
-    If (eqcm_data%mass_frequency%fread) Then
+    If (eqcm_data%mass_frequency%fread .Or. eqcm_data%mass%fread) Then
       ! Close file SPEC_MASS_FREQUENCY
       Close(files(FILE_SPEC_MASS)%unit_no)
       ! Move file
@@ -1364,12 +1438,20 @@ Contains
                                & fft_data%end_current%value
       Call info(message,1)
     End If
-    If (eqcm_data%mass_frequency%fread) Then
-      Write (message,'(1x,a,i3)') 'Mass-frequency points to average padding: ', &
-                               & fft_data%end_mass_frequency%value
+
+    If (eqcm_data%mass%fread) Then
+      Write (message,'(1x,a,i3)')   'Mass points to average padding:           ', &
+                               & fft_data%end_mass%value
       Call info(message,1)
+    Else    
+      If (eqcm_data%mass_frequency%fread) Then
+        Write (message,'(1x,a,i3)') 'Mass-frequency points to average padding: ', &
+                                 & fft_data%end_mass%value
+        Call info(message,1)
+      End If
     End If
-    fft_data%endpoints=max(fft_data%end_mass_frequency%value, fft_data%end_current%value)
+    
+    fft_data%endpoints=max(fft_data%end_mass%value, fft_data%end_current%value)
 
     Write (messages(1),'(a)') '  '
     If (eqcm_data%range_cycles%value(1)==eqcm_data%range_cycles%value(2)) Then
@@ -1401,12 +1483,16 @@ Contains
           If (eqcm_data%current%fread) Then
             Call fft_setup(fft_data, npoints, eqcm_data%current%value(:,j,i), domain, fft_data%end_current%value)
             Call filter_data(fft_data, filter, npoints, eqcm_data%current%value(:,j,i))
+          End If
 
+          If (eqcm_data%mass%fread) Then
+          Else        
+            If (eqcm_data%mass_frequency%fread) Then
+              Call fft_setup(fft_data, npoints, eqcm_data%mass_frequency%value(:,j,i), domain, fft_data%end_mass%value)
+              Call filter_data(fft_data, filter, npoints, eqcm_data%mass_frequency%value(:,j,i))
+            End If
           End If
-          If (eqcm_data%mass_frequency%fread) Then
-            Call fft_setup(fft_data, npoints, eqcm_data%mass_frequency%value(:,j,i), domain, fft_data%end_mass_frequency%value)
-            Call filter_data(fft_data, filter, npoints, eqcm_data%mass_frequency%value(:,j,i))
-          End If
+
           ! Deallocate
           Deallocate(fft_data%rec_domain) 
           Deallocate(fft_data%array) 
@@ -1425,7 +1511,7 @@ Contains
   Subroutine print_eqcm_data(eqcm_data, fft_data, files)
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     ! Print EQCM data if either "print_eqcm_raw" or "print_eqcm_filter" option 
-    ! was selected. Current and/or mass density will be printed to file:    
+    ! was selected. Current and/or mass (or mass-density) will be printed to file:    
     ! - FILTERED_CURRENT if print_eqcm_filter and there is data for current
     ! - FILTERED_MASS    if print_eqcm_filter and there is data for mass-frequency 
     ! - RAW_CURRENT      if print_eqcm_raw and there is data for current
@@ -1443,7 +1529,7 @@ Contains
 
     Logical           :: frange
 
-    Character(Len=256) :: messages(3)
+    Character(Len=256) :: messages(3), header
     Character(Len=256) :: unit_name_mass, unit_name_current 
 
     If (eqcm_data%analysis%type == 'print_eqcm_filter') Then
@@ -1454,7 +1540,7 @@ Contains
         unit_name_current=Trim(files(FILE_FILTERED_CURRENT)%filename)
       End If
       ! Open file FILTERED_MASS
-      If (eqcm_data%mass_frequency%fread) Then
+      If (eqcm_data%mass_frequency%fread .Or. eqcm_data%mass%fread) Then
         Open(Newunit=files(FILE_FILTERED_MASS)%unit_no, File=files(FILE_FILTERED_MASS)%filename, Status='Replace')
         iunit_mass=files(FILE_FILTERED_MASS)%unit_no
         unit_name_mass=Trim(files(FILE_FILTERED_MASS)%filename)
@@ -1468,7 +1554,7 @@ Contains
       End If
 
       ! Open file RAW_MASS
-      If (eqcm_data%mass_frequency%fread) Then
+      If (eqcm_data%mass_frequency%fread .Or. eqcm_data%mass%fread) Then
         Open(Newunit=files(FILE_RAW_MASS)%unit_no, File=files(FILE_RAW_MASS)%filename,Status='Replace')
         iunit_mass=files(FILE_RAW_MASS)%unit_no
         unit_name_mass=Trim(files(FILE_RAW_MASS)%filename)
@@ -1477,12 +1563,25 @@ Contains
     End If
 
     !Call info(messages,1)
-    If (eqcm_data%current%fread .And. (.Not. eqcm_data%mass_frequency%fread)) Then
+    If (eqcm_data%current%fread .And. (.Not. (eqcm_data%mass_frequency%fread .Or. eqcm_data%mass%fread))) Then
       Write (messages(1),'(1x,2a)') 'Print EQCM current to file ', Trim(FOLDER_ANALYSIS)//'/'//Trim(unit_name_current) 
-    Else If (eqcm_data%mass_frequency%fread .And. (.Not. eqcm_data%current%fread)) Then
-      Write (messages(1),'(1x,2a)') 'Print EQCM mass density to file ', Trim(FOLDER_ANALYSIS)//'/'//Trim(unit_name_mass) 
-    Else If (eqcm_data%current%fread .And. eqcm_data%mass_frequency%fread) Then  
-      Write (messages(1),'(1x,5a)') 'Print EQCM current and mass density to files ', &
+    Else If ((eqcm_data%mass_frequency%fread .Or. eqcm_data%mass%fread) .And. (.Not. eqcm_data%current%fread)) Then
+      If (eqcm_data%mass%fread) Then      
+        Write (messages(1),'(1x,2a)') 'Print EQCM mass to file ', Trim(FOLDER_ANALYSIS)//'/'//Trim(unit_name_mass) 
+      Else
+        If (eqcm_data%mass_frequency%fread) Then      
+          Write (messages(1),'(1x,2a)') 'Print EQCM mass-density to file ', Trim(FOLDER_ANALYSIS)//'/'//Trim(unit_name_mass) 
+        End If        
+      End If        
+    Else If (eqcm_data%current%fread .And. (eqcm_data%mass_frequency%fread .Or. eqcm_data%mass%fread)) Then  
+      If (eqcm_data%mass%fread) Then      
+        header='Print EQCM current and mass to files'
+      Else
+        If (eqcm_data%mass_frequency%fread) Then
+          header='Print EQCM current and mass-density to file'
+        End If        
+      End If        
+      Write (messages(1),'(1x,a,1x,4a)') Trim(header), &
                                    & Trim(FOLDER_ANALYSIS)//'/'//Trim(unit_name_current), ' and ',&
                                    & Trim(FOLDER_ANALYSIS)//'/'//Trim(unit_name_mass), ', respectively.' 
     End If
@@ -1492,8 +1591,13 @@ Contains
     If (eqcm_data%current%fread) Then
       Write (iunit_current,'(a,6x,a)')    '# Potential [V]', 'Current [mA]'
     End If
-    If (eqcm_data%mass_frequency%fread) Then
-      Write (iunit_mass,'(a,6x,a)')    '# Potential [V]', 'Mass density [ng/cm2]'
+
+    If (eqcm_data%mass%fread) Then
+      Write (iunit_mass,'(a,6x,a)')    '# Potential [V]', 'Mass [ng]'
+    Else         
+      If (eqcm_data%mass_frequency%fread) Then
+        Write (iunit_mass,'(a,6x,a)')    '# Potential [V]', 'Mass-density [ng/cm2]'
+      End If
     End If
 
     Do i = eqcm_data%range_cycles%value(1), eqcm_data%range_cycles%value(2)
@@ -1502,7 +1606,7 @@ Contains
         If (eqcm_data%current%fread) Then
           Write (iunit_current,'(a,i3,2a)') '# Cycle ', i, '- Voltage sweep: ', Trim(eqcm_data%label_leg(j,i))
         End If
-        If (eqcm_data%mass_frequency%fread) Then
+        If (eqcm_data%mass_frequency%fread .Or. eqcm_data%mass%fread) Then
           Write (iunit_mass,'(a,i3,2a)')   '# Cycle ', i, '- Voltage sweep: ', Trim(eqcm_data%label_leg(j,i))
         End If 
 
@@ -1522,8 +1626,12 @@ Contains
               If (eqcm_data%current%fread) Then
                 Write (iunit_current,'(f12.4,8x,f12.4)')  eqcm_data%voltage%value(k,j,i), eqcm_data%current%value(k,j,i)
               End If             
-              If (eqcm_data%mass_frequency%fread) Then
-                Write (iunit_mass,'(f12.4,8x,f12.4)')  eqcm_data%voltage%value(k,j,i), eqcm_data%mass_frequency%value(k,j,i)
+              If (eqcm_data%mass%fread) Then
+                Write (iunit_mass,'(f12.4,8x,f12.4)')  eqcm_data%voltage%value(k,j,i), eqcm_data%mass%value(k,j,i)
+              Else        
+                If (eqcm_data%mass_frequency%fread) Then
+                  Write (iunit_mass,'(f12.4,8x,f12.4)')  eqcm_data%voltage%value(k,j,i), eqcm_data%mass_frequency%value(k,j,i)
+                End If             
               End If             
             End If
 
@@ -1533,13 +1641,13 @@ Contains
             Write (iunit_current,'(a)') '# Either no data or number of the EQCM points&
                                        & is not sufficient for the choice of endpoints'
           End If
-          If (eqcm_data%mass_frequency%fread) Then
+          If (eqcm_data%mass_frequency%fread .Or. eqcm_data%mass%fread) Then
             Write (iunit_mass,'(a)') '# Either no data or number of the EQCM points is&
                                     & not sufficient for the choice of endpoints'
           End If
         End If
         If (eqcm_data%current%fread) Write (iunit_current,*) ' '
-        If (eqcm_data%mass_frequency%fread) Write (iunit_mass,*) ' '
+        If (eqcm_data%mass_frequency%fread .Or. eqcm_data%mass%fread) Write (iunit_mass,*) ' '
       End Do
     End Do
 
@@ -1548,7 +1656,7 @@ Contains
       Call execute_command_line('mv '//Trim(unit_name_current)//' '//Trim(FOLDER_ANALYSIS))
       Close(iunit_current)
     End If
-    If (eqcm_data%mass_frequency%fread) Then
+    If (eqcm_data%mass_frequency%fread .Or. eqcm_data%mass%fread) Then
       Call execute_command_line('mv '//Trim(unit_name_mass)//' '//Trim(FOLDER_ANALYSIS))
       Close(iunit_mass)
     End If
@@ -1629,7 +1737,7 @@ Contains
 
   Subroutine eqcm_mass_calibration(eqcm_data, files)
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    ! Prints Mass frequency (Delta f) vs charge variation (Delta Q) for 
+    ! Prints Mass-frequency (Delta f) vs charge variation (Delta Q) for 
     ! calibration purposes. Such exercise is usually conducted using the 
     ! electro-deposition of Ag on Pt, which is known to behave nicely.
     ! 
@@ -1731,14 +1839,27 @@ Contains
               End If  
             End If 
             ! Computes DM
-            If (k==1) Then
-              DM=eqcm_data%mass_frequency%value(k+1,j,i)-eqcm_data%mass_frequency%value(k,j,i)
-            ElseIf (k==eqcm_data%segment_points(j,i)) Then
-              DM=eqcm_data%mass_frequency%value(k,j,i)-eqcm_data%mass_frequency%value(k-1,j,i)
-            Else 
-              DM=eqcm_data%mass_frequency%value(k+1,j,i)-eqcm_data%mass_frequency%value(k-1,j,i)
+            If (eqcm_data%mass%fread) Then
+              If (k==1) Then
+                DM=eqcm_data%mass%value(k+1,j,i)-eqcm_data%mass%value(k,j,i)
+              ElseIf (k==eqcm_data%segment_points(j,i)) Then
+                DM=eqcm_data%mass%value(k,j,i)-eqcm_data%mass%value(k-1,j,i)
+              Else 
+                DM=eqcm_data%mass%value(k+1,j,i)-eqcm_data%mass%value(k-1,j,i)
+              End If 
+            Else        
+              If (eqcm_data%mass_frequency%fread) Then
+                If (k==1) Then
+                  DM=eqcm_data%mass_frequency%value(k+1,j,i)-eqcm_data%mass_frequency%value(k,j,i)
+                ElseIf (k==eqcm_data%segment_points(j,i)) Then
+                  DM=eqcm_data%mass_frequency%value(k,j,i)-eqcm_data%mass_frequency%value(k-1,j,i)
+                Else 
+                  DM=eqcm_data%mass_frequency%value(k+1,j,i)-eqcm_data%mass_frequency%value(k-1,j,i)
+                End If 
+              End If 
             End If 
-              massogram(k,j,i)=DM/Dt
+            ! Compute DM/dt
+            massogram(k,j,i)=DM/Dt
           End Do
         End If
       End Do
@@ -1753,7 +1874,13 @@ Contains
     Write (messages(2),'(1x,2a)') 'Print massogram to file ', Trim(FOLDER_ANALYSIS)//'/'//Trim(unit_massogram)
     Call info(messages,2)
 
-    Write (iunit_massogram,'(a,6x,a)')    '# Voltage [V]', 'Mass-density rate [ng/cm2/s]'
+    If (eqcm_data%mass%fread) Then
+        Write (iunit_massogram,'(a,6x,a)')    '# Voltage [V]', 'Mass rate [ng/s]'
+    Else
+      If (eqcm_data%mass_frequency%fread) Then       
+        Write (iunit_massogram,'(a,6x,a)')    '# Voltage [V]', 'Mass-density rate [ng/cm2/s]'
+      End If        
+    End If        
 
     Do i = eqcm_data%range_cycles%value(1), eqcm_data%range_cycles%value(2)
       Do j= 1, 2

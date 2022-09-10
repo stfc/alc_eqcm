@@ -14,8 +14,8 @@ Module dft_castep
   Use constants,        Only : date_RELEASE, &
                                chemsymbol, & 
                                max_components, &
-                               NPTE, &
-                               K_to_eV 
+                               K_to_eV, &
+                               NPTE
 
   Use fileset,          Only : file_type, &
                                FILE_SET_EQCM, &
@@ -231,11 +231,11 @@ Contains
       Call error_stop(message)
     End If
 
-   ! Smear
+   ! Smearing
    If (simulation_data%dft%smear%fread) Then
      If (Trim(simulation_data%dft%smear%type) /= 'gaussian' .And.&
         Trim(simulation_data%dft%smear%type) /= 'fermi'     .And.& 
-        Trim(simulation_data%dft%smear%type) /= 'fix-occupancy') Then
+        Trim(simulation_data%dft%smear%type) /= 'fix_occupancy') Then
         Write (messages(1),'(2(1x,a))') Trim(error_dft), &
                                      &'Invalid specification of directive "smearing" for CASTEP. Options are:'
         Write (messages(2),'(1x,a)') '- Gaussian       (Gaussian distribution)' 
@@ -251,22 +251,58 @@ Contains
      Write (message,'(2(1x,a))') Trim(error_dft), 'The user must specify directive "smearing" for CASTEP simulations'
      Call error_stop(message)
    End If 
-   
-   If (Trim(simulation_data%dft%smear%type) == 'fix-occupancy') Then
+ 
+   ! Mixing 
+   If (simulation_data%dft%mixing%fread) Then
+     If (simulation_data%dft%edft%stat) Then 
+       Write (message,'(2(1x,a))') Trim(error_dft), 'For CASTEP, the definition of "mixing_scheme" is incompatible with&
+                                                & eDFT. Please review settings.'
+       Call error_stop(message)
+     End If        
+     If (Trim(simulation_data%dft%mixing%type)   /= 'kerker'      .And.&
+        Trim(simulation_data%dft%mixing%type)    /= 'linear'      .And.& 
+        Trim(simulation_data%dft%mixing%type)    /= 'broyden-2nd' .And.& 
+        Trim(simulation_data%dft%mixing%type)    /= 'pulay') Then
+        Write (messages(1),'(2(1x,a))') Trim(error_dft), &
+                                     &'Invalid specification of directive "mixing_scheme" for CASTEP. Options are:'
+        Write (messages(2),'(1x,a)') '- Kerker' 
+        Write (messages(3),'(1x,a)') '- Linear'
+        Write (messages(4),'(1x,a)') '- Broyden-2nd (input option is "Broyden")' 
+        Write (messages(5),'(1x,a)') '- Pulay' 
+        Call info(messages, 5)
+        Call error_stop(' ')
+     End If
+   Else
+     simulation_data%dft%mixing%type='broyden-2nd'      
+   End If 
+
+   ! Fix occupancy
+   If (Trim(simulation_data%dft%smear%type) == 'fix_occupancy') Then
+     If (simulation_data%dft%edft%stat) Then 
+       Write (message,'(2(1x,a))') Trim(error_dft), 'For CASTEP, the choice of "fix_occupancy" for the "smearing" directive&
+                                  & is incompatible with the request of EDFT. Please review settings'
+       Call error_stop(message)
+     End If        
+           
      If (simulation_data%dft%bands%fread) Then
-       Write (message,'(2(1x,a))') Trim(error_dft), 'For CASTEP, definition of "bands" is incompatible with&
-                                 & "fix_occupancy". Please change seetings.'
+       Write (message,'(2(1x,a))') Trim(error_dft), 'For CASTEP, the definition of "bands" is incompatible with&
+                                 & the choice of "fix_occupancy" for the "smearing" directive. Please review settings'
        Call error_stop(message) 
      End If
      If (simulation_data%dft%width_smear%fread) Then
-       Write (message,'(2(1x,a))') Trim(error_dft), 'Definition of "width_smear" is incompatible with&
-                                 & the choice of "fix_occupancy" for CASTEP settings. Please change'
+       Write (message,'(2(1x,a))') Trim(error_dft), 'For CASTEP, the definition of "width_smear" is incompatible with&
+                                 & the choice of "fix_occupancy" for the "smearing" directive. Please review settings'
+       Call error_stop(message) 
+     End If
+     If (simulation_data%dft%mixing%fread) Then
+       Write (message,'(2(1x,a))') Trim(error_dft), 'Definition of "mixing_scheme" is incompatible with&
+                                 & the choice of "fix_occupancy" for the "smearing" directive. Please review settings'
        Call error_stop(message) 
      End If
    End If
         
     ! Width smearing
-    If (Trim(simulation_data%dft%smear%type) /= 'fix-occupancy') Then
+    If (Trim(simulation_data%dft%smear%type) /= 'fix_occupancy') Then
       If (.Not. simulation_data%dft%bands%fread) Then
         Write (message,'(2(1x,a))') Trim(error_dft), 'Requested settings for computation of the electronic problem&
                                   & needs the specification of extra number of bands via "bands".'
@@ -282,7 +318,7 @@ Contains
         End If
       End If
     End If
-    
+   
     ! SCF energy tolerance 
     If (simulation_data%dft%delta_e%fread) Then
       If (Trim(simulation_data%dft%delta_e%units) /= 'ev' ) Then
@@ -433,7 +469,9 @@ Contains
     If (simulation_data%extra_info%stat) Then
       ! Check if user defined directives contain only symbol "="
       Do i = 1, simulation_data%extra_directives%N0
-        Call check_extra_directives(simulation_data%extra_directives%array(i), ':', 'CASTEP', i)
+        Call check_extra_directives(simulation_data%extra_directives%array(i), &
+                                    simulation_data%extra_directives%key(i),   &
+                                    simulation_data%extra_directives%set(i), ':', 'CASTEP')
       End Do
     End If
 
@@ -485,7 +523,7 @@ Contains
     Character(Len=256) :: pseudo_list(max_components)
     Character(Len=256) :: exec_mv
     Character(Len=256) :: pp_path
-    Character(Len=256) :: message, messages(2), tag
+    Character(Len=256) :: message, messages(2)
     Real(Kind=wp)      :: mag_ini(max_components)
     Real(Kind=wp), Dimension(max_components) :: uc, jc  
 
@@ -515,8 +553,8 @@ Contains
     Call record_directive(iunit, message, 'TASK', simulation_data%set_directives%array(ic), ic)
 
     Write (iunit,'(a)')    '    '
-    Write (iunit,'(a)') '##### Electronic structure'
-    Write (iunit,'(a)') '#========================='
+    Write (iunit,'(a)') '##### Electronic parameters'
+    Write (iunit,'(a)') '#=========================='
     ! Define the XC part
      If (Trim(simulation_data%dft%xc_version%type) == 'pz') Then
        Write (iunit,'(2a)') '# Perdew-Zunger (PZ) LDA functional ', Trim(bib_pz) 
@@ -543,7 +581,6 @@ Contains
      Call record_directive(iunit, message, 'XC_FUNCTIONAL', simulation_data%set_directives%array(ic), ic)
  
     If (simulation_data%dft%vdw%fread) Then
-      Write (iunit,'(a)') ' '
       Write (iunit,'(a)') '#==== vdW corrections'
       Write (message,'(a)') 'SEDC_APPLY : True'
       Call record_directive(iunit, message, 'SEDC_APPLY', simulation_data%set_directives%array(ic), ic)
@@ -565,34 +602,36 @@ Contains
       End If
       Call record_directive(iunit, message, 'SEDC_SCHEME', simulation_data%set_directives%array(ic), ic)
     End If
-    Write (iunit,'(a)')  '#'
     
     If (Trim(simulation_data%dft%smear%type) == 'fix_occupancy') Then
       Write (message,'(a)')   'FIX_OCCUPANCY   :  True '
       Call record_directive(iunit, message, 'FIX_OCCUPANCY', simulation_data%set_directives%array(ic), ic)
     Else
-      Write (message,'(a)')   'FIX_OCCUPANCY   :  False'
-      Call record_directive(iunit, message, 'FIX_OCCUPANCY', simulation_data%set_directives%array(ic), ic)
+      If (simulation_data%dft%edft%stat) Then
+        Write (iunit,'(a)')             '#=== Ensemble DFT'      
+        Write (message,'(a)')           'METALS_METHOD  :   EDFT'
+        Call record_directive(iunit, message, 'METALS_METHOD', simulation_data%set_directives%array(ic), ic)
+      Else
+        Write (iunit,'(a)')           '#=== Density mixing'      
+        Write (message,'(a)')         'METALS_METHOD  :   DM'
+        Call record_directive(iunit, message, 'METALS_METHOD', simulation_data%set_directives%array(ic), ic)
+        If (Trim(simulation_data%dft%mixing%type)    == 'broyden-2nd') Then
+          Write (message,'(a)')  'MIXING_SCHEME  :  Broyden   # This is actually the Broyden-2nd method of Johnson.'
+        Else
+          Write (message,'(2a)') 'MIXING_SCHEME  :  ', Trim(simulation_data%dft%mixing%type)
+        End If
+        Call record_directive(iunit, message, 'MIXING_SCHEME', simulation_data%set_directives%array(ic), ic)
+      End If
       If (Trim(simulation_data%dft%smear%type) == 'gaussian') Then
-        Write (message,'(a)') 'SMEARING_SCHEME :    Gaussian   # Gaussian mearing'
+        Write (message,'(a)') 'SMEARING_SCHEME :    Gaussian   # Gaussian smearing'
         Call record_directive(iunit, message, 'SMEARING_SCHEME', simulation_data%set_directives%array(ic), ic)
       Else If (Trim(simulation_data%dft%smear%type) == 'fermi') Then
-        Write (message,'(a)') 'SMEARING_SCHEME :    FermiDirac   # Fermi mearing'
+        Write (message,'(a)') 'SMEARING_SCHEME :    FermiDirac   # Fermi smearing'
         Call record_directive(iunit, message, 'SMEARING_SCHEME', simulation_data%set_directives%array(ic), ic)
       End If
       Write (message,'(a,f6.2,1x,a)') 'SMEARING_WIDTH : '  , simulation_data%dft%width_smear%value,&
                                      Trim(simulation_data%dft%width_smear%units)
       Call record_directive(iunit, message, 'SMEARING_WIDTH', simulation_data%set_directives%array(ic), ic)
-
-      If (simulation_data%dft%edft%stat) Then
-        Write (message,'(a)')           'METALS_METHOD  :   EDFT'
-        Call record_directive(iunit, message, 'METALS_METHOD', simulation_data%set_directives%array(ic), ic)
-        Write (message,'(a,f8.2,2x,a)') 'ELEC_TEMP : ', simulation_data%dft%width_smear%value/K_to_eV, 'K'      
-        Call record_directive(iunit, message, 'ELEC_TEMP', simulation_data%set_directives%array(ic), ic)
-      Else
-        Write (message,'(a)') 'MIXING_SCHEME  :  Pulay'
-        Call record_directive(iunit, message, 'MIXING_SCHEME', simulation_data%set_directives%array(ic), ic)
-      End If
       If (simulation_data%dft%bands%fread) Then
         Write (message,'(a,i4,a)') 'NEXTRA_BANDS : ', simulation_data%dft%bands%value,&
                                 & ' # add extra bands to improve convergence'
@@ -728,19 +767,19 @@ Contains
    ! Extra-directives
    If (simulation_data%extra_info%stat) Then
      Write (iunit,'(a)') ' '
-     Write (iunit,'(a)') '##### User defined directives'
-     Write (iunit,'(a)') '#============================'
+     Write (iunit,'(a)') '##### Extra directives'
+     Write (iunit,'(a)') '#====================='
      found=.False.
      Do i=1, simulation_data%extra_directives%N0
        Write (iunit,'(a)') Trim(Adjustl(simulation_data%extra_directives%array(i)))
        If (Index(Trim(Adjustl(simulation_data%extra_directives%array(i))), '#') /= 1 ) Then
-         Call scan_extra_directive(simulation_data%extra_directives%array(i), simulation_data%set_directives, &
-                                 & ':', found, tag)         
+         Call scan_extra_directive(simulation_data%extra_directives%key(i), simulation_data%set_directives, found)         
          If (found)Then
            Close(iunit)
            Call info(' ', 1)
-           Write (messages(1), '(1x,3a)') '***ERROR in sub-bock &extra_directives: directive "', Trim(tag),&
-                                     & '" has already been defined.'
+           Write (messages(1), '(1x,3a)') '***ERROR in sub-bock &extra_directives: directive "', &
+                                         & Trim(simulation_data%extra_directives%key(i)),&
+                                         & '" has already been defined.'
            Write (messages(2), '(1x,3a)') 'Please check temporary file ', Trim(files(FILE_SET_SIMULATION)%filename), &
                                      & '. The user must review the settings of &extra_directives.&
                                      & Directives must not be duplicated.'
@@ -748,7 +787,7 @@ Contains
            Call error_stop(' ')
          Else
            simulation_data%set_directives%N0=simulation_data%set_directives%N0+1
-           simulation_data%set_directives%array(simulation_data%set_directives%N0)=Trim(tag)
+           simulation_data%set_directives%array(simulation_data%set_directives%N0)=Trim(simulation_data%extra_directives%key(i))
          End If
        End If
      End Do
@@ -915,7 +954,7 @@ Contains
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     Type(simul_type),   Intent(In   ) :: simulation_data
 
-    Character(Len=256) :: messages(7), header
+    Character(Len=256) :: messages(10), header
     Character(Len=256) :: in_extra
     Logical            :: warning, error, print_header
     Integer(Kind=wi)   :: i
@@ -943,22 +982,32 @@ Contains
                                 & OPT_STRATEGY and DATA_DISTRIBUTION ', Trim(in_extra), '.'
     Call info(messages, 1)
     Write (messages(1), '(1x,a)') 'In case of problems in the electronic convergence, the user should:'
-    If (simulation_data%dft%smear%type=='fix-occupancy') Then
-      Write (messages(2), '(1x,a)') '- check if the system is a metal/semiconductor instead of an insulator'
+    If (simulation_data%dft%smear%type=='fix_occupancy') Then
+       Write (messages(2), '(1x,a)') '- check if the system is a metal instead of an insulator.&
+                                    & If so, change the option for "smearing"'
       Call info(messages, 2)
     Else
       Write (messages(2), '(1x,a)')  '- increase the value of NEXTRA_BANDS using "bands"'
       Write (messages(3), '(1x,a)')  '- modify the SMEARING_SCHEME using "smearing"'
-      Write (messages(4), '(1x,2a)') '- change the method for ELECTRONIC_MINIMIZER (CG by default)', Trim(in_extra)
+      Write (messages(4), '(1x,2a)') '- change the method for ELECTRONIC_MINIMIZER (CG by default) ', Trim(in_extra)
       Write (messages(5), '(1x,a)')  '- increase SMEARING_WIDTH using "width_smear"'
       Write (messages(6), '(1x,a)')  '- increase the value CUT_OFF_ENERGY with "energy_cutoff"'
-      If (simulation_data%dft%edft%fread)then
+      If (simulation_data%dft%edft%fread) Then
         Write (messages(7), '(1x,2a)') '- increase NUM_OCC_CYCLES ', Trim(in_extra)
+        Write (messages(8), '(1x,a)')  ' '
+        Write (messages(9), '(1x,a)') 'If none of the above works, set "edft" to .False.'
       Else
-        Write (messages(7), '(1x,3a)') '- reduce the value of MIX_CHARGE_AMP (default is 0.8) ', Trim(in_extra),&
-                                      &'. If this does not work, set "edft" to .True.'
+        Write (messages(7), '(1x,2a)') '- set a value of MIX_CHARGE_AMP (default is 0.8) ', Trim(in_extra)
+        If (simulation_data%dft%mixing%fread) Then
+          Write (messages(8), '(1x,a)') '- change the option for directive "mixing_scheme"'
+        Else
+          Write (messages(8), '(1x,a)') '- set directive "mixing_scheme" (Broyden-2nd by default)'
+        End If        
+        Write (messages(9), '(1x,a)') 'If none of the above works, set "edft" to .True.'
       End If
-      Call info(messages, 7)
+      Write (messages(10), '(1x,a)') 'IMPORTANT: the system might be non-metallic. If so, set "smearing" to "fix_occupancy"'
+        Call info(messages, 10)
+        Call info(' ', 1)
     End If
 
     Write (messages(1), '(1x,3a)') 'The amount of generated information during run can be controlled (',&

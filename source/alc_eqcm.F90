@@ -127,12 +127,12 @@ Implicit None
       ! Summarise cycling
       Call eqcm_cycling_summary(files, eqcm_data)
        
-      !Print mass frequency and accumulated charge for mass calibration
+      !Print mass-frequency and accumulated charge for mass calibration
       If (eqcm_data%analysis%type=='mass_calibration') Then
         Call eqcm_mass_calibration(eqcm_data, files) 
       Else
       !Perform mass-frequency to mass conversion   
-        If (eqcm_data%mass_frequency%fread) Then
+        If (eqcm_data%mass_frequency%fread .And. (.Not. eqcm_data%mass%fread)) Then
           Call sauerbrey_correlation(files, eqcm_data, system_data, sauer_data) 
           Call sauerbrey_transformation(eqcm_data, sauer_data)
         End If

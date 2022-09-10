@@ -75,10 +75,13 @@ Contains
 
     Write (ounit, '(a)') Trim(message)
     ! Print error to screen
-    Write (output_unit,*) '*********************************************'
-    Write (output_unit,*) '** ERROR !!! ERROR !!! ERROR !!! ERROR !!! **'
-    Write (output_unit,*) '** Please see details in the OUT_EQCM file **'
-    Write (output_unit,*) '*********************************************'
+    Write (output_unit,*) '*******************************************************'
+    Write (output_unit,*) '** ERROR !!! ERROR !!! ERROR !!! ERROR !!! ERROR !!! **'
+    Write (output_unit,*) '*******************************************************'
+    Write (output_unit,*) '**  Please see details in the OUT_EQCM file. If the  **'
+    Write (output_unit,*) '**  error message makes no sense, check that the     **'
+    Write (output_unit,*) '**  input files are free of non-ASCII characters     **'
+    Write (output_unit,*) '*******************************************************'
     ! close all I/O channels
     Call close_unit(ounit)
     Error Stop

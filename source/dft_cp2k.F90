@@ -261,32 +261,53 @@ Contains
     End If
     simulation_data%dft%encut%units='Ry'
 
-    ! EDFT 
-    If (simulation_data%dft%edft%stat) Then
-      Write (message,'(2(1x,a))') Trim(error_dft), 'Requested Ensemble-DFT for metals/semiconductors via directive "EDFT"&
-                                 & is not possible for CP2K simulations. Please remove it'
-      Call error_stop(message)
-    End If
-
     ! Orbital transformation
     If (simulation_data%dft%ot%stat) Then
       If (simulation_data%dft%smear%fread) Then
-        Write (message,'(2(1x,a))') Trim(error_dft), 'The user has requested Orbital Transformation via "OT"&
-                                 & but also specified directive "smearing", which instructs CP2K to use&
-                                 & diagonalization. Choose either "OT" or "smearing".'
+        Write (message,'(2(1x,a))') Trim(error_dft), 'Setting "smearing" is inconsistent with the&
+                                 & requested Orbital Transformation (OT). Please remove it'
         Call error_stop(message)
       End If 
       If (simulation_data%dft%width_smear%fread) Then
-        Write (message,'(2(1x,a))') Trim(error_dft), 'Directive "width_smear" is inconsistent with the&
+        Write (message,'(2(1x,a))') Trim(error_dft), 'Setting "width_smear" is inconsistent with the&
                                  & requested Orbital Transformation (OT). Please remove it'
         Call error_stop(message)
       End If
       If (simulation_data%dft%bands%fread) Then
-        Write (message,'(2(1x,a))') Trim(error_dft), 'Directive "bands" is inconsistent with the&
+        Write (message,'(2(1x,a))') Trim(error_dft), 'Setting "bands" is inconsistent with the&
+                                 & requested Orbital Transformation (OT). Please remove it'
+        Call error_stop(message)
+      End If 
+      If (simulation_data%dft%mixing%fread) Then
+        Write (message,'(2(1x,a))') Trim(error_dft), 'Setting "mixing_scheme" is inconsistent with the&
                                  & requested Orbital Transformation (OT). Please remove it'
         Call error_stop(message)
       End If 
     Else ! Smearing
+      ! Mixing
+      If (simulation_data%dft%mixing%fread) Then
+        If (Trim(simulation_data%dft%mixing%type)   /= 'kerker'       .And.&
+           Trim(simulation_data%dft%mixing%type)    /= 'linear'       .And.&
+           Trim(simulation_data%dft%mixing%type)    /= 'broyden'      .And.&
+           Trim(simulation_data%dft%mixing%type)    /= 'broyden-2nd'  .And.&
+           Trim(simulation_data%dft%mixing%type)    /= 'multisecant'  .And.&
+           Trim(simulation_data%dft%mixing%type)    /= 'pulay')   Then
+           Write (messages(1),'(2(1x,a))') Trim(error_dft), &
+                                        &'Invalid specification of directive "mixing_scheme" for VASP. Options are:'
+           Write (messages(2),'(1x,a)') '- Kerker'
+           Write (messages(3),'(1x,a)') '- Linear'
+           Write (messages(4),'(1x,a)') '- Broyden'
+           Write (messages(5),'(1x,a)') '- Broyden-2nd'
+           Write (messages(6),'(1x,a)') '- Multisecant'
+           Write (messages(7),'(1x,a)') '- Pulay'
+           Call info(messages, 7)
+           Call error_stop(' ')
+        End If
+      Else
+        simulation_data%dft%mixing%type='linear'
+      End If
+
+      ! Smearing           
       If (simulation_data%dft%smear%fread) Then 
         If (Trim(simulation_data%dft%smear%type) /= 'window'    .And.&
           Trim(simulation_data%dft%smear%type) /= 'fermi') Then
@@ -341,183 +362,187 @@ Contains
     End If
     
     ! Checkings related to basis sets
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    ! Check BASIS_SET file exists
-    Inquire(File=Trim(FOLDER_DFT)//'/BASIS_SET', Exist=safe)
-    If (.not.safe) Then
-      Write (messages(1),'(1x,3a)') '***ERROR: File BASIS_SET cannot be found in folder ', Trim(FOLDER_DFT),&
-                             & '. This file is needed to set the basis parameters for CP2K simulations.'
-      Write (messages(2),'(1x,a)') '   The user must set the content of this file using the various&
-                                 & basis set from the CP2K repository,'
-      Write (messages(3),'(1x,a)') '   depending on the specification for "basis_set" and the participating atomic species'
-      Call info(messages, 3)
-      Call error_stop(' ')
-    End If
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    If (simulation_data%dft%basis_info%fread) Then
+      ! Check BASIS_SET file exists
+      Inquire(File=Trim(FOLDER_DFT)//'/BASIS_SET', Exist=safe)
+      If (.not.safe) Then
+        Write (messages(1),'(1x,3a)') '***ERROR: File BASIS_SET cannot be found in folder ', Trim(FOLDER_DFT),&
+                               & '. This file is needed to set the basis parameters for CP2K simulations.'
+        Write (messages(2),'(1x,a)') '   The user must set the content of this file using the various&
+                                   & basis set from the CP2K repository,'
+        Write (messages(3),'(1x,a)') '   depending on the specification for "basis_set" and the participating atomic species'
+        Call info(messages, 3)
+        Call error_stop(' ')
+      End If
 
-    ! Rename the type of basis
-    Do i=1, simulation_data%total_tags
-      If (Trim(simulation_data%dft%basis_set(i)%type) /= 'sz'  .And. &
-         Trim(simulation_data%dft%basis_set(i)%type) /= 'dz'  .And. &
-         Trim(simulation_data%dft%basis_set(i)%type) /= 'szp' .And. &
-         Trim(simulation_data%dft%basis_set(i)%type) /= 'dzp' .And. &
-         Trim(simulation_data%dft%basis_set(i)%type) /= 'tzp' .And. &
-         Trim(simulation_data%dft%basis_set(i)%type) /= 'tz2p' ) Then
-         Write (messages(1),'(1x,4a)') Trim(error_dft), ' Invalid CP2K basis set specification for tag "', &
-                                  & Trim(simulation_data%dft%basis_set(i)%tag), '". Valid options:'
-         Write (messages(2),'(1x,a)') 'SZ    (Single Zeta)'
-         Write (messages(3),'(1x,a)') 'DZ    (Double Zeta)'
-         Write (messages(4),'(1x,a)') 'SZP   (Single Zeta Polarizable)'  
-         Write (messages(5),'(1x,a)') 'DZP   (Double Zeta Polarizable)'   
-         Write (messages(6),'(1x,a)') 'TZP   (Triple Zeta Polarizable)' 
-         Write (messages(7),'(1x,a)') 'TZ2P  (Triple Zeta 2-Polarizable)'
-         Call info(messages, 7)
-         Call error_stop(' ')
-      End If
-      ! Transform to the CP2K lab`lling
-      If (Trim(simulation_data%dft%basis_set(i)%type) == 'sz')  simulation_data%dft%basis_set(i)%type='SZV'
-      If (Trim(simulation_data%dft%basis_set(i)%type) == 'dz')  simulation_data%dft%basis_set(i)%type='DZV'
-      If (Trim(simulation_data%dft%basis_set(i)%type) == 'szp') simulation_data%dft%basis_set(i)%type='SZVP'
-      If (Trim(simulation_data%dft%basis_set(i)%type) == 'dzp') simulation_data%dft%basis_set(i)%type='DZVP'
-      If (Trim(simulation_data%dft%basis_set(i)%type) == 'tzp') simulation_data%dft%basis_set(i)%type='TZVP'
-      If (Trim(simulation_data%dft%basis_set(i)%type) == 'tz2p')simulation_data%dft%basis_set(i)%type='TZV2P'
-    End Do
+      ! Rename the type of basis
+      Do i=1, simulation_data%total_tags
+        If (Trim(simulation_data%dft%basis_set(i)%type) /= 'sz'  .And. &
+           Trim(simulation_data%dft%basis_set(i)%type) /= 'dz'  .And. &
+           Trim(simulation_data%dft%basis_set(i)%type) /= 'szp' .And. &
+           Trim(simulation_data%dft%basis_set(i)%type) /= 'dzp' .And. &
+           Trim(simulation_data%dft%basis_set(i)%type) /= 'tzp' .And. &
+           Trim(simulation_data%dft%basis_set(i)%type) /= 'tz2p' ) Then
+           Write (messages(1),'(1x,4a)') Trim(error_dft), ' Invalid CP2K basis set specification for tag "', &
+                                    & Trim(simulation_data%dft%basis_set(i)%tag), '". Valid options:'
+           Write (messages(2),'(1x,a)') 'SZ    (Single Zeta)'
+           Write (messages(3),'(1x,a)') 'DZ    (Double Zeta)'
+           Write (messages(4),'(1x,a)') 'SZP   (Single Zeta Polarizable)'  
+           Write (messages(5),'(1x,a)') 'DZP   (Double Zeta Polarizable)'   
+           Write (messages(6),'(1x,a)') 'TZP   (Triple Zeta Polarizable)' 
+           Write (messages(7),'(1x,a)') 'TZ2P  (Triple Zeta 2-Polarizable)'
+           Call info(messages, 7)
+           Call error_stop(' ')
+        End If
+        ! Transform to the CP2K lab`lling
+        If (Trim(simulation_data%dft%basis_set(i)%type) == 'sz')  simulation_data%dft%basis_set(i)%type='SZV'
+        If (Trim(simulation_data%dft%basis_set(i)%type) == 'dz')  simulation_data%dft%basis_set(i)%type='DZV'
+        If (Trim(simulation_data%dft%basis_set(i)%type) == 'szp') simulation_data%dft%basis_set(i)%type='SZVP'
+        If (Trim(simulation_data%dft%basis_set(i)%type) == 'dzp') simulation_data%dft%basis_set(i)%type='DZVP'
+        If (Trim(simulation_data%dft%basis_set(i)%type) == 'tzp') simulation_data%dft%basis_set(i)%type='TZVP'
+        If (Trim(simulation_data%dft%basis_set(i)%type) == 'tz2p')simulation_data%dft%basis_set(i)%type='TZV2P'
+      End Do
 
-    ! Check if element and basis are defined in the BASIS_SET file
-    Do i=1, simulation_data%total_tags
-      path=Trim(FOLDER_DFT)//'/BASIS_SET'
-      If (Trim(simulation_data%dft%xc_base)=='PBE') Then
-        basis= Trim(simulation_data%dft%basis_set(i)%type)//'-MOLOPT-SR-GTH '
-      Else 
-        basis= Trim(simulation_data%dft%basis_set(i)%type)//'-GTH-'//Trim(simulation_data%dft%xc_base)
-      End If
-      ! Error message, just in case-----------------------------
-      Write (messages(1),'(1x,9a)') '*** ERROR in BASIS_SET file: Basis ', Trim(basis), &
-                       & ' cannot be found for atomic species "', Trim(simulation_data%dft%basis_set(i)%element),&
-                       & '" (for tag "', Trim(simulation_data%dft%basis_set(i)%tag), &
-                       & '"), which is required to compute the DFT problem using the "',&
-                       & Trim(simulation_data%dft%xc_version%type),'" XC energy functional.'
-      Write (messages(3),'(1x,5a)') '    If basis ', Trim(basis), ' for element "',&
-                                  & Trim(simulation_data%dft%basis_set(i)%element),& 
-                                  &'" is not available, the user should either consider:'
-      Write (messages(4),'(1x,3a)') '      i) changing the basis_set for tag "', Trim(simulation_data%dft%basis_set(i)%tag),&
-                                           & '" in block &basis_set'
-      Write (messages(5),'(1x,a)')  '     ii) changing "XC_level" and "XC_version" directives in SET_EQCM'
-      Write (messages(6),'(1x,a)')  '    iii) contacting the CP2K forum for assistance at https://groups.google.com/g/cp2k'
-      Write (messages(7),'(1x,a)')  '     iv) generating a new basis set for the element (only if the user knows what to do)'
-      
-      If (Trim(simulation_data%dft%xc_base)=='PBE') Then
-        Write (messages(2),'(1x,3a)') '    Please refer to files BASIS_MOLOPT, BASIS_MOLOPT_UCL&
-                                    & and BASIS_MOLOPT_LnPP1 of the CP2K repository and add&
-                                    & the basis to ', Trim(FOLDER_DFT), '/BASIS_SET.'
-      Else 
-        Write (messages(2),'(1x,3a)') '    Please refer to the BASIS_SET file of the CP2K repository&
-                                    & and add the basis to ', Trim(FOLDER_DFT), '/BASIS_SET.'
-      End If
-      ! -------------------------------------------------------
-      word=Trim(simulation_data%component(i)%element) 
-      exec_grep='grep "'//Trim(word)//' " '//Trim(path)//' > xc.dat'
-      Call execute_command_line(exec_grep)
-      Call execute_command_line('wc -l xc.dat > nlines.dat')
-      Open(Newunit=internal, File='nlines.dat' ,Status='old')
-      Read (internal, Fmt=*, iostat=io) nlines
-      If (nlines==0) Then
+      ! Check if element and basis are defined in the BASIS_SET file
+      Do i=1, simulation_data%total_tags
+        path=Trim(FOLDER_DFT)//'/BASIS_SET'
+        If (Trim(simulation_data%dft%xc_base)=='PBE') Then
+          basis= Trim(simulation_data%dft%basis_set(i)%type)//'-MOLOPT-SR-GTH '
+        Else 
+          basis= Trim(simulation_data%dft%basis_set(i)%type)//'-GTH-'//Trim(simulation_data%dft%xc_base)
+        End If
+        ! Error message, just in case-----------------------------
+        Write (messages(1),'(1x,9a)') '*** ERROR in BASIS_SET file: Basis ', Trim(basis), &
+                         & ' cannot be found for atomic species "', Trim(simulation_data%dft%basis_set(i)%element),&
+                         & '" (for tag "', Trim(simulation_data%dft%basis_set(i)%tag), &
+                         & '"), which is required to compute the DFT problem using the "',&
+                         & Trim(simulation_data%dft%xc_version%type),'" XC energy functional.'
+        Write (messages(3),'(1x,5a)') '    If basis ', Trim(basis), ' for element "',&
+                                    & Trim(simulation_data%dft%basis_set(i)%element),& 
+                                    &'" is not available, the user should either consider:'
+        Write (messages(4),'(1x,3a)') '      i) changing the basis_set for tag "', Trim(simulation_data%dft%basis_set(i)%tag),&
+                                             & '" in block &basis_set'
+        Write (messages(5),'(1x,a)')  '     ii) changing "XC_level" and "XC_version" directives in SET_EQCM'
+        Write (messages(6),'(1x,a)')  '    iii) contacting the CP2K forum for assistance at https://groups.google.com/g/cp2k'
+        Write (messages(7),'(1x,a)')  '     iv) generating a new basis set for the element (only if the user knows what to do)'
+        
+        If (Trim(simulation_data%dft%xc_base)=='PBE') Then
+          Write (messages(2),'(1x,3a)') '    Please refer to files BASIS_MOLOPT, BASIS_MOLOPT_UCL&
+                                      & and BASIS_MOLOPT_LnPP1 of the CP2K repository and add&
+                                      & the basis to ', Trim(FOLDER_DFT), '/BASIS_SET.'
+        Else 
+          Write (messages(2),'(1x,3a)') '    Please refer to the BASIS_SET file of the CP2K repository&
+                                      & and add the basis to ', Trim(FOLDER_DFT), '/BASIS_SET.'
+        End If
+        ! -------------------------------------------------------
+        word=Trim(simulation_data%component(i)%element) 
+        exec_grep='grep "'//Trim(word)//' " '//Trim(path)//' > xc.dat'
+        Call execute_command_line(exec_grep)
+        Call execute_command_line('wc -l xc.dat > nlines.dat')
+        Open(Newunit=internal, File='nlines.dat' ,Status='old')
+        Read (internal, Fmt=*, iostat=io) nlines
+        If (nlines==0) Then
+          Close(internal)
+          Call execute_command_line('rm  nlines.dat xc.dat')
+          Call info(messages, 7)
+          Call error_stop(' ')
+        End If
+        Close(internal)
+ 
+        root=repeat(' ', 256)
+        root=Trim(basis)
+        loop=.True.
+        Open(Newunit=internal, File='xc.dat' ,Status='old')
+        j=1
+        Do While (j<=nlines .And. loop)
+          Read (internal, Fmt='(a)') line
+          Do k=1, maxcol 
+            word=repeat(' ', 256)
+            Read (line,Fmt=*, iostat=io ) (word, l=1,k)
+            If (io /= 0 ) Then
+              exit
+            Else
+              If (root==word) Then
+                simulation_data%dft%basis_set(i)%basis=root
+                loop=.False.
+              End If 
+            End If
+          End Do
+          j=j+1 
+        End Do
+        If (loop) Then
+          Call execute_command_line('rm  nlines.dat xc.dat')
+          Call info(messages, 7)
+          Call error_stop(' ')
+        End If
         Close(internal)
         Call execute_command_line('rm  nlines.dat xc.dat')
-        Call info(messages, 7)
-        Call error_stop(' ')
-      End If
-      Close(internal)
- 
-      root=repeat(' ', 256)
-      root=Trim(basis)
-      loop=.True.
-      Open(Newunit=internal, File='xc.dat' ,Status='old')
-      j=1
-      Do While (j<=nlines .And. loop)
-        Read (internal, Fmt='(a)') line
-        Do k=1, maxcol 
-          word=repeat(' ', 256)
-          Read (line,Fmt=*, iostat=io ) (word, l=1,k)
-          If (io /= 0 ) Then
-            exit
-          Else
-            If (root==word) Then
-              simulation_data%dft%pseudo_pot(i)%basis=root
-              loop=.False.
-            End If 
-          End If
-        End Do
-        j=j+1 
       End Do
-      If (loop) Then
-        Call execute_command_line('rm  nlines.dat xc.dat')
-        Call info(messages, 7)
-        Call error_stop(' ')
-      End If
-      Close(internal)
-      Call execute_command_line('rm  nlines.dat xc.dat')
-    End Do
+    End If
 
     !Pseudo potentials
     !!!!!!!!!!!!!!!!!!! 
-    ! Check if element is defined in the POTENTIAL file 
-    Do i=1, simulation_data%total_tags
-      path=Trim(pp_path)//Trim(simulation_data%dft%pseudo_pot(i)%file_name)
-      potential= 'GTH-'//Trim(simulation_data%dft%xc_base)
-      ! Error message, just in case-----------------------------
-      Write (messages(1),'(1x,9a)') '*** ERROR in file ', Trim(simulation_data%dft%pseudo_pot(i)%file_name), &
-                       & ': Potential ', Trim(potential), &
-                       & ' cannot be found for atomic species "', Trim(simulation_data%component(i)%element),&
-                       & '", which is required to compute the DFT problem using the "',&
-                       & Trim(simulation_data%dft%xc_version%type),&
-                       & '" XC energy functional.' 
-      Write (messages(2),'(1x,3a)') '    Please refer to the potential files of the CP2K repository.&
-                                  & If potential ', Trim(potential), ' is not available, the user should& 
-                                  & consider changing the settings for "XC_level" and "XC_version"'
-      ! -------------------------------------------------------
-      word=Trim(simulation_data%component(i)%element) 
-      exec_grep='grep "'//Trim(word)//' " '//Trim(path)//' > xc.dat'
-      Call execute_command_line(exec_grep)
-      Call execute_command_line('wc -l xc.dat > nlines.dat')
-      Open(Newunit=internal, File='nlines.dat' ,Status='old')
-      Read (internal, Fmt=*, iostat=io) nlines
-      If (nlines==0) Then
+    ! Check if element is defined in the POTENTIAL file
+    If (simulation_data%dft%pp_info%stat) Then 
+      Do i=1, simulation_data%total_tags
+        path=Trim(pp_path)//Trim(simulation_data%dft%pseudo_pot(i)%file_name)
+        potential= 'GTH-'//Trim(simulation_data%dft%xc_base)
+        ! Error message, just in case-----------------------------
+        Write (messages(1),'(1x,9a)') '*** ERROR in file ', Trim(simulation_data%dft%pseudo_pot(i)%file_name), &
+                         & ': Potential ', Trim(potential), &
+                         & ' cannot be found for atomic species "', Trim(simulation_data%component(i)%element),&
+                         & '", which is required to compute the DFT problem using the "',&
+                         & Trim(simulation_data%dft%xc_version%type),&
+                         & '" XC energy functional.' 
+        Write (messages(2),'(1x,3a)') '    Please refer to the potential files of the CP2K repository.&
+                                    & If potential ', Trim(potential), ' is not available, the user should& 
+                                    & consider changing the settings for "XC_level" and "XC_version"'
+        ! -------------------------------------------------------
+        word=Trim(simulation_data%component(i)%element) 
+        exec_grep='grep "'//Trim(word)//' " '//Trim(path)//' > xc.dat'
+        Call execute_command_line(exec_grep)
+        Call execute_command_line('wc -l xc.dat > nlines.dat')
+        Open(Newunit=internal, File='nlines.dat' ,Status='old')
+        Read (internal, Fmt=*, iostat=io) nlines
+        If (nlines==0) Then
+          Close(internal)
+          Call execute_command_line('rm  nlines.dat xc.dat')
+          Call info(messages, 2)
+          Call error_stop(' ')
+        End If
         Close(internal)
-        Call execute_command_line('rm  nlines.dat xc.dat')
-        Call info(messages, 2)
-        Call error_stop(' ')
-      End If
-      Close(internal)
 
-      root=potential
-      loop=.True.
-      Call get_word_length(root,root_length)
-      Open(Newunit=internal, File='xc.dat' ,Status='old')
-      j=1
-      Do While (j<=nlines .And. loop)
-        Read (internal, Fmt='(a)') line
-        Do k=1, maxcol
-          Read (line,Fmt=*, iostat=io ) (word, l=1,k)
-          If (io /= 0 ) Then
-            exit
-          Else
-            If (root(1:root_length)==word(1:root_length)) Then
-              loop=.False.
+        root=potential
+        loop=.True.
+        Call get_word_length(root,root_length)
+        Open(Newunit=internal, File='xc.dat' ,Status='old')
+        j=1
+        Do While (j<=nlines .And. loop)
+          Read (internal, Fmt='(a)') line
+          Do k=1, maxcol
+            Read (line,Fmt=*, iostat=io ) (word, l=1,k)
+            If (io /= 0 ) Then
+              exit
+            Else
+              If (root(1:root_length)==word(1:root_length)) Then
+                loop=.False.
+              End If
             End If
-          End If
+          End Do
+          j=j+1
         End Do
-        j=j+1
-      End Do
-      If (loop) Then
+        If (loop) Then
+          Close(internal)
+          Call execute_command_line('rm  nlines.dat xc.dat')
+          Call info(messages, 2)
+          Call error_stop(' ')
+        End If
         Close(internal)
+        simulation_data%dft%pseudo_pot(i)%potential=potential
         Call execute_command_line('rm  nlines.dat xc.dat')
-        Call info(messages, 2)
-        Call error_stop(' ')
-      End If
-      Close(internal)
-      simulation_data%dft%pseudo_pot(i)%potential=potential
-      Call execute_command_line('rm  nlines.dat xc.dat')
-    End Do
+      End Do
+    End If
 
     ! max_l_orbital   
     If (simulation_data%dft%max_l_orbital%fread) Then
@@ -742,9 +767,12 @@ Contains
       Write (iunit,'(4x,a,i6)') 'CHARGE  ', Nint(simulation_data%net_charge%value)
     End If
     Write (iunit,'(a)')   ' '
-    Write (iunit,'(4x,a)') '#==== Potential and Basis' 
-    Write (iunit,'(4x,a)') 'BASIS_SET_FILE_NAME  BASIS_SET' 
-    Write (iunit,'(4x,2a)') 'POTENTIAL_FILE_NAME  ', Trim(simulation_data%dft%pseudo_pot(1)%file_name) 
+    Write (iunit,'(4x,a)') '#==== Basis set filename' 
+    Write (iunit,'(4x,a)') 'BASIS_SET_FILE_NAME  BASIS_SET'
+    If (simulation_data%dft%pp_info%stat) Then 
+      Write (iunit,'(4x,a)') '#==== Pseudopotential filename' 
+      Write (iunit,'(4x,2a)') 'POTENTIAL_FILE_NAME  ', Trim(simulation_data%dft%pseudo_pot(1)%file_name) 
+    End If
     Write (iunit,'(a)')   ' '
     Write (iunit,'(4x,a)') '#==== Self-consistency'
     Write (iunit,'(4x,a)') '&QS'
@@ -1101,8 +1129,19 @@ Contains
       Write (iunit,'(6x,a)') '&END SMEAR'
       Write (iunit,'(6x,a)') '#== Mixing'
       Write (iunit,'(6x,a)') '&MIXING'
-      Write (iunit,'(8x,a)') 'METHOD BROYDEN_MIXING'
-      Write (iunit,'(8x,a)') 'ALPHA 0.15'
+      If (Trim(simulation_data%dft%mixing%type)        == 'kerker') Then     
+        Write (iunit,'(8x,a)') 'METHOD  KERKER_MIXING'
+      Else If (Trim(simulation_data%dft%mixing%type)    == 'linear') Then      
+        Write (iunit,'(8x,a)') 'METHOD DIRECT_P_MIXING'
+      Else If (Trim(simulation_data%dft%mixing%type)    == 'broyden') Then     
+        Write (iunit,'(8x,a)') 'METHOD BROYDEN_MIXING'
+      Else If (Trim(simulation_data%dft%mixing%type)    == 'broyden-2nd') Then 
+        Write (iunit,'(8x,a)') 'METHOD BROYDEN_MIXING_NEW'
+      Else If (Trim(simulation_data%dft%mixing%type)    == 'multisecant') Then 
+        Write (iunit,'(8x,a)') 'METHOD MULTISECANT_MIXING'
+      Else If (Trim(simulation_data%dft%mixing%type)    == 'pulay') Then
+        Write (iunit,'(8x,a)') 'METHOD PULAY_MIXING'
+      End If
       Write (iunit,'(6x,a)') '&END MIXING'
     End If
     Write (iunit,'(4x,a)') '&END SCF'
@@ -1182,16 +1221,30 @@ Contains
     Do k=1, net_elements
       Write (iunit,'(4x,2a)') '&KIND  ', Trim(list_tag(k))
       Write (iunit,'(6x,2a)')  'ELEMENT ', Trim(list_element(k))
+
       j=1
       loop=.True.
-      Do While (j <= simulation_data%total_tags .And. loop)
-        If (Trim(simulation_data%dft%pseudo_pot(j)%tag)==Trim(list_tag(k))) Then
-           Write (iunit,'(6x,2a)')  'BASIS_SET ', Trim(simulation_data%dft%pseudo_pot(j)%basis)
-           Write (iunit,'(6x,2a)')  'POTENTIAL ', Trim(simulation_data%dft%pseudo_pot(j)%potential)
-          loop=.False.
-        End If
-        j=j+1 
-      End Do
+      If (simulation_data%dft%basis_info%fread) Then
+        Do While (j <= simulation_data%total_tags .And. loop)
+          If (Trim(simulation_data%dft%basis_set(j)%tag)==Trim(list_tag(k))) Then
+             Write (iunit,'(6x,2a)')  'BASIS_SET ', Trim(simulation_data%dft%basis_set(j)%basis)
+             loop=.False.
+          End If
+          j=j+1 
+        End Do
+      End If
+
+      If (simulation_data%dft%pp_info%stat) Then
+        j=1
+        loop=.True.
+        Do While (j <= simulation_data%total_tags .And. loop)
+          If (Trim(simulation_data%dft%pseudo_pot(j)%tag)==Trim(list_tag(k))) Then
+            Write (iunit,'(6x,2a)')  'POTENTIAL ', Trim(simulation_data%dft%pseudo_pot(j)%potential)
+            loop=.False.
+          End If
+          j=j+1 
+        End Do
+      End If
 
       If (simulation_data%dft%mag_info%fread) Then
         j=1
@@ -1356,23 +1409,13 @@ Contains
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     Type(simul_type),   Intent(In   ) :: simulation_data
 
-    Character(Len=256)  :: messages(7), header
+    Character(Len=256)  :: messages(8), header
     Character(Len=256)  :: in_file
     Logical             :: warning, error, print_header
     Integer(Kind=wi)    :: i
 
     warning=.False.
     print_header=.True.
-
-    Call info(' ', 1)
-    Call info(' ***WARNING****************', 1)
-    Write (messages(1), '(1x,a)') 'Due to the complex block structure of the input.cp2k file, the use of "&extra_directives"'
-    Write (messages(2), '(1x,a)') 'is not allowed for the generation of files for CP2K simulations. Even though most directives'
-    Write (messages(3), '(1x,a)') 'are defined from &block_simulation_settings, there are several directives that have been set'   
-    Write (messages(4), '(1x,a)') 'arbitrarily (see ALC_EQCM manual) based on previous experience.'
-    Write (messages(5), '(1x,a)') 'Unfortunately, changes to such directives have to be implemented manually.' 
-    Call info(messages, 5)
-    Call info(' *************************', 1)
 
     Call info(' ', 1)
     Write (messages(1), '(1x,a)') 'In case of problems, or to speed up the electronic convergence,&
@@ -1386,10 +1429,12 @@ Contains
                                      & as well as the &OUTER_SCF block (manually)'
       Call info(messages, 5)                               
     Else
-      Write (messages(5), '(1x,a)')  ' - the settings in blocks &DIAGONALIZATION and/or &MIXING (manually)'
-      Write (messages(6), '(1x,a)')  ' - the value of ADDED_MOS with directive "bands"' 
-      Write (messages(7), '(1x,a)')  ' - the ELECTRONIC_TEMPERATURE using directive "width_smear"'                            
-      Call info(messages, 7)                               
+      Write (messages(5), '(1x,a)')  ' - the option of directive "mixing_scheme". Add/adjust manually related&
+                                     & mixing parameters in block &MIXING'
+      Write (messages(6), '(1x,a)')  ' - the settings in block &DIAGONALIZATION (manually)'
+      Write (messages(7), '(1x,a)')  ' - the value of ADDED_MOS with directive "bands"' 
+      Write (messages(8), '(1x,a)')  ' - the ELECTRONIC_TEMPERATURE using directive "width_smear"'                            
+      Call info(messages, 8)                               
     End If
 
     ! XC_GRID

@@ -18,16 +18,22 @@ Module dft_onetep
                                FOLDER_DFT 
   Use numprec,          Only : wi, &
                                wp
-  Use process_data,     Only : capital_to_lower_case
+  Use process_data,     Only : capital_to_lower_case, remove_symbols
   Use references,       Only : bib_AVV10s, bib_blyp, bib_dftd2, bib_optb88, bib_optpbe, bib_pbe, bib_pbesol, &
                                bib_pw91, bib_pw92, bib_pz, bib_revpbe, bib_rp, bib_vdwdf, bib_vdwdf2, bib_vv10, &
                                bib_vwn, bib_xlyp
   Use simulation_tools, Only : simul_type,&
                                check_extra_directives, &
                                check_initial_magnetization, &
+                               check_settings_set_extra_directives, &
+                               check_settings_single_extra_directive, &
                                print_warnings, &
+                               max_directives, &
                                record_directive, &
-                               scan_extra_directive 
+                               scan_extra_directive,&
+                               set_reference_database, &
+                               type_extra,&
+                               type_ref_data
   Use stoichiometry,    Only : stoich_type
   Use unit_output,      Only : error_stop,&
                                info 
@@ -63,7 +69,7 @@ Contains
 
     pp_path   = Trim(FOLDER_DFT)//'/PPs/'    
 
-    ! latest vrrsion of the code
+    ! latest version of the code
     simulation_data%code_version= '6.0'
 
     ! Check that atomic tags do not have more than 4 characters
@@ -123,63 +129,66 @@ Contains
     ! Pseudopotentials
     !!!!!!!!!!!!!!!!!!
     ! Check if all PP files correspond to the same format
-    Do i =1, simulation_data%total_tags
-      ! check the extension of the file (recpot vs. abinit vs. unknown)
-      Write (pp_name, '(a)')  Trim(simulation_data%dft%pseudo_pot(i)%file_name)
-      If (Index(pp_name,'.abinit') /= 0 .Or. Index(pp_name,'.recpot') /= 0) Then
+    If (simulation_data%dft%pp_info%stat) Then
+      Do i =1, simulation_data%total_tags
+        ! check the extension of the file (recpot vs. abinit vs. unknown)
+        Write (pp_name, '(a)')  Trim(simulation_data%dft%pseudo_pot(i)%file_name)
+        If (Index(pp_name,'.abinit') /= 0 .Or. Index(pp_name,'.recpot') /= 0) Then
 
-        If (Index(pp_name,'.recpot') /= 0) Then
-          pp_extension='.recpot'
-          If (i==1) Then
-            ref_pp_extension='.recpot'
-          End If         
+          If (Index(pp_name,'.recpot') /= 0) Then
+            pp_extension='.recpot'
+            If (i==1) Then
+              ref_pp_extension='.recpot'
+            End If         
 
-        Else If (Index(pp_name,'.abinit') /= 0) Then
-          pp_extension='.abinit'
-          !---------------------------------------------
-          ! This should be removed when ONETEP+PAW works
-          !---------------------------------------------
-          Write (message,'(1x,4a)') Trim(error_dft), ' Up to ', Trim(date_RELEASE), ', the PAW method in ONETEP is under revision.&
-                                   & The user is advised to use norm-conserving pseudopotentials (files with extension .recpot).'
-          Call error_stop(message)
-          !--------------------------------------------
-          !--------------------------------------------
-          If (i==1) Then
-            simulation_data%dft%onetep_paw = .True.
-            ref_pp_extension='.abinit'
+          Else If (Index(pp_name,'.abinit') /= 0) Then
+            pp_extension='.abinit'
+            !---------------------------------------------
+            ! This should be removed when ONETEP+PAW works
+            !---------------------------------------------
+            Write (message,'(1x,4a)') Trim(error_dft), ' Up to ', Trim(date_RELEASE), ', the PAW method in ONETEP is under&
+                                     & revision. The user is advised to use norm-conserving pseudopotentials (files with&
+                                     & extension .recpot).'
+            Call error_stop(message)
+            !--------------------------------------------
+            !--------------------------------------------
+            If (i==1) Then
+              simulation_data%dft%onetep_paw = .True.
+              ref_pp_extension='.abinit'
+            End If
+
           End If
 
+          If (Trim(pp_extension) /= Trim(ref_pp_extension)) Then
+             Write (message, '(1x,3a)') '***ERROR: pseudo potential files defined in &pseudo_potentials contain&
+                                       & different extensions. For ONETEP, all files must be either ".recpot"&
+                                       & or ".abinit" type.'
+             Call error_stop(message)
+          End If
+
+        Else
+          Write (message,'(1x,5a)') '***ERROR: The extension of file ',  Trim(pp_name), ' for the pseudo potential of species "',&
+                                  & Trim(simulation_data%dft%pseudo_pot(i)%tag), '" is not recognised by ONETEP.&
+                                  & Valid extensions are ".abinit" and ".recpot".'
+          Call error_stop(message)
+        End If 
+
+      End Do 
+
+      ! Check consistency between pseudpotentials and XC directive
+      Do i=1, simulation_data%total_tags
+        pp_file=Trim(pp_path)//Trim(simulation_data%dft%pseudo_pot(i)%file_name)
+        ! Open PP file
+        Open(Newunit=internal, File=Trim(pp_file), Status='old')
+        If (Trim(ref_pp_extension) =='.recpot') Then
+          Call check_recpot_onetep(internal, simulation_data, i)  
+        Else If (Trim(ref_pp_extension) == '.abinit') Then
+          Call check_abinit(internal, simulation_data, i) 
         End If
-
-        If (Trim(pp_extension) /= Trim(ref_pp_extension)) Then
-           Write (message, '(1x,3a)') '***ERROR: pseudo potential files defined in &pseudo_potentials contain&
-                                     & different extensions. For ONETEP, all files must be either ".recpot"&
-                                     & or ".abinit" type.'
-           Call error_stop(message)
-        End If
-
-      Else
-        Write (message,'(1x,5a)') '***ERROR: The extension of file ',  Trim(pp_name), ' for the pseudo potential of species "',&
-                                & Trim(simulation_data%dft%pseudo_pot(i)%tag), '" is not recognised by ONETEP.&
-                                & Valid extensions are ".abinit" and ".recpot".'
-        Call error_stop(message)
-      End If 
-
-    End Do 
-
-    ! Check consistency between pseudpotentials and XC directive
-    Do i=1, simulation_data%total_tags
-      pp_file=Trim(pp_path)//Trim(simulation_data%dft%pseudo_pot(i)%file_name)
-      ! Open PP file
-      Open(Newunit=internal, File=Trim(pp_file), Status='old')
-      If (Trim(ref_pp_extension) =='.recpot') Then
-        Call check_recpot_onetep(internal, simulation_data, i)  
-      Else If (Trim(ref_pp_extension) == '.abinit') Then
-        Call check_abinit(internal, simulation_data, i) 
-      End If
-      ! Close PP file
-      Close(internal)
-    End Do
+        ! Close PP file
+        Close(internal)
+      End Do
+    End If 
 
     ! vdW settings 
     simulation_data%dft%need_vdw_kernel=.False.
@@ -332,7 +341,6 @@ Contains
        Call error_stop(' ')
     End If
 
-
     ! EDFT for metallic sytems
     If (simulation_data%dft%edft%stat) Then
       If (simulation_data%dft%smear%fread) Then
@@ -376,6 +384,108 @@ Contains
         Call error_stop(' ')
       End If
 
+    End If
+
+   ! GC-DFT functionality
+   If (simulation_data%dft%gc%activate%stat) Then
+     If (.Not. simulation_data%dft%edft%stat) Then
+       Write (message,'(2(1x,a))')  Trim(error_dft), 'In ONETEP, requested GC-DFT simulations need Ensemble DFT treatment.&
+                                   & Set directive "edft" to .True. and rerun.'
+       Call error_stop(message)
+     End If
+     If (simulation_data%dft%gc%reference_potential%fread) Then
+       If (simulation_data%dft%gc%reference_potential%fail) Then
+          Write (message,'(2(1x,a))') Trim(error_dft), 'Wrong (or missing) settings for "reference_potential" directive.'
+          Call error_stop(message)
+       Else
+         If (Trim(simulation_data%dft%gc%reference_potential%units) /= 'ev') Then
+            Write (message,'(3a)')  Trim(error_dft), ' Invalid units of directive "reference_potential". Units must be "V"'
+            Call error_stop(message)
+         End If
+       End If
+     Else
+       Write (message,'(2(1x,a))')  Trim(error_dft), 'Requested GC-DFT simulation needs the definition of&
+                                   & the "reference_potential" directive in the sub-block &gcdft.'
+       Call error_stop(message)
+     End If
+
+     If (simulation_data%dft%gc%electrode_potential%fread) Then
+       If (simulation_data%dft%gc%electrode_potential%fail) Then
+          Write (message,'(2(1x,a))') Trim(error_dft), 'Wrong (or missing) settings for "electrode_potential" directive.'
+          Call error_stop(message)
+       Else
+         If (Trim(simulation_data%dft%gc%electrode_potential%units) /= 'v') Then
+            Write (message,'(3a)')  Trim(error_dft), ' Invalid units of directive "electrode_potential". Units must be "V"'
+            Call error_stop(message)
+         End If
+       End If
+     Else
+       Write (message,'(2(1x,a))')  Trim(error_dft), 'Requested GC-DFT simulation needs the definition of&
+                                   & the "electrode_potential" directive in the sub-block &gcdft'
+       Call error_stop(message)
+     End If
+
+     If (simulation_data%dft%gc%electron_threshold%fread) Then
+       If (simulation_data%dft%gc%electron_threshold%fail) Then
+          Write (message,'(2(1x,a))') Trim(error_dft), 'Wrong (or missing) settings for "electron_threshold" directive.'
+          Call error_stop(message)
+       Else
+         If (simulation_data%dft%gc%electron_threshold%value < epsilon(1.0_wp)) Then
+            Write (message,'(3a)')  Trim(error_dft), ' Input value for "electron_threshold" MUST be larger than zero'
+            Call error_stop(message)
+         End If
+       End If
+     Else
+       Write (message,'(2(1x,a))')  Trim(error_dft), 'Requested GC-DFT simulation needs the definition of&
+                                   & the "electron_threshold" directive in the sub-block &gcdft.'
+       Call error_stop(message)
+     End If
+   End If
+
+    ! Mixing
+    If (simulation_data%dft%mixing%fread) Then
+      If (simulation_data%dft%edft%stat) Then
+        If (Trim(simulation_data%dft%mixing%type) /= 'damp_fixpoint'  .And.&
+           Trim(simulation_data%dft%mixing%type)  /= 'pulay')   Then
+           Write (messages(1),'(2(1x,a))') Trim(error_dft), &
+                                        &'Invalid specification of directive "mixing_scheme" in ONETEP. Options for EDFT are:'
+           Write (messages(2),'(1x,a)') '- Damp_fixpoint'
+           Write (messages(3),'(1x,a)') '- Pulay'
+           Call info(messages, 3)
+           Call error_stop(' ')
+        End If
+      Else
+        If (Trim(simulation_data%dft%mixing%type) /= 'lnv'  .And.&
+            Trim(simulation_data%dft%mixing%type) /= 'dnk_linear'  .And.&
+            Trim(simulation_data%dft%mixing%type) /= 'ham_linear'  .And.&
+            Trim(simulation_data%dft%mixing%type) /= 'dnk_pulay'  .And.&
+            Trim(simulation_data%dft%mixing%type) /= 'ham_pulay'  .And.&
+            Trim(simulation_data%dft%mixing%type) /= 'dnk_listi'  .And.&
+            Trim(simulation_data%dft%mixing%type) /= 'ham_listi'  .And.&
+            Trim(simulation_data%dft%mixing%type) /= 'dnk_listb'  .And.&
+            Trim(simulation_data%dft%mixing%type) /= 'ham_listb')   Then
+           Write (messages(1),'(2(1x,a))') Trim(error_dft), &
+                                        &'Invalid specification of directive "mixing_scheme" in ONETEP.&
+                                        & Options for band gap systems (i.e. no EDFT) are:'
+           Write (messages(2),'(1x,a)') '- lnv'
+           Write (messages(2),'(1x,a)') '- dnk_linear'
+           Write (messages(3),'(1x,a)') '- ham_linear'
+           Write (messages(4),'(1x,a)') '- dnk_pulay'
+           Write (messages(5),'(1x,a)') '- ham_pulay'
+           Write (messages(6),'(1x,a)') '- dnk_listi'
+           Write (messages(7),'(1x,a)') '- ham_listi'
+           Write (messages(8),'(1x,a)') '- dnk_listb'
+           Write (messages(9),'(1x,a)') '- ham_listb'
+           Call info(messages, 9)
+           Call error_stop(' ')
+        End If
+      End If
+    Else
+      If (simulation_data%dft%edft%stat) Then
+        simulation_data%dft%mixing%type='damp_fixpoint'
+      Else
+        simulation_data%dft%mixing%type='lnv'
+      End If        
     End If
 
     ! Check if basis set was defined, complain and abort
@@ -502,7 +612,9 @@ Contains
     If (simulation_data%extra_info%stat) Then
       ! Check if user defined directives contain only symbol ":"
       Do i = 1, simulation_data%extra_directives%N0
-        Call check_extra_directives(simulation_data%extra_directives%array(i), ':', 'ONETEP', i)
+        Call check_extra_directives(simulation_data%extra_directives%array(i), &
+                                    simulation_data%extra_directives%key(i),   &
+                                    simulation_data%extra_directives%set(i), ':', 'ONETEP')
       End Do
     End If
 
@@ -531,10 +643,10 @@ Contains
     Integer(Kind=wi)   :: iunit, atomic_number
     Logical            :: loop, loop2
     Real(Kind=wp)      :: mag_ini(max_components)
-    Character(Len=256) :: thermo, word, word2
-    Character(Len=256) :: message, messages(2), tag
+    Character(Len=256) :: thermo
+    Character(Len=256) :: message, messages(2)
 
-    Integer(Kind=wi)   :: ic
+    Integer(Kind=wi)   :: ic, ici
     Logical            :: found
 
     ic=1
@@ -663,19 +775,40 @@ Contains
     ! EDFT
     If (simulation_data%dft%edft%stat) Then
       Write (iunit,'(a)')           ' '
-      Write (iunit,'(3a)') '#==== Ensemble DFT'
+      Write (iunit,'(a)') '#==== Ensemble DFT'
       Write (message,'(a)')           'edft  :  T'
       Call record_directive(iunit, message, 'edft', simulation_data%set_directives%array(ic), ic)
       Write (message,'(a,f8.2,2x,a)') 'edft_smearing_width : ', simulation_data%dft%width_smear%value, ' eV  # smearing width'  
       Call record_directive(iunit, message, 'edft_smearing_width', simulation_data%set_directives%array(ic), ic)
+      ! Mixing
+      Write (message,'(2a)') 'edft_update_scheme  :  ', Trim(simulation_data%dft%mixing%type)
+      Call record_directive(iunit, message, 'edft_update_scheme', simulation_data%set_directives%array(ic), ic)
 
       If (simulation_data%dft%bands%fread) Then
-          Write (message,'(a,i4,a)') 'edft_extra_bands : ', simulation_data%dft%bands%value,&
-                                & ' # add extra bands to reach/improve convergence'
+          Write (message,'(a,i4,a)') 'edft_extra_bands : ', simulation_data%dft%bands%value, &
+                                   & ' # add extra bands to reach/improve convergence'
       Else 
-          Write (message,'(a)')       'edft_extra_bands :  -1 # bands is equal to the total number of NGWFs' 
+          Write (message,'(a)')     'edft_extra_bands :  -1 # bands is equal to the total number of NGWFs' 
       End If
       Call record_directive(iunit, message, 'edft_extra_bands', simulation_data%set_directives%array(ic), ic)
+    Else
+      ! DIIS Mixing
+      Write (message,'(2a)') 'kernel_diis_scheme  :  ', Trim(simulation_data%dft%mixing%type)
+      Call record_directive(iunit, message, 'kernel_diis_scheme', simulation_data%set_directives%array(ic), ic)
+    End If
+
+    ! GC-DFT
+    If (simulation_data%dft%gc%activate%stat) Then
+      Write (iunit,'(a)')           ' '
+      Write (iunit,'(a)') '#==== Grand Canonical (GC)'
+      Write (message,'(a)')           'edft_grand_canonical  :  T'
+      Call record_directive(iunit, message, 'edft_grand_canonical', simulation_data%set_directives%array(ic), ic)
+      Write (message,'(a,f8.2,2x,a)') 'edft_reference_potential : ', simulation_data%dft%gc%reference_potential%value, ' eV'  
+      Call record_directive(iunit, message, 'dft_reference_potential', simulation_data%set_directives%array(ic), ic)
+      Write (message,'(a,f8.2,2x,a)') 'edft_electrode_potential : ', simulation_data%dft%gc%electrode_potential%value, ' V'  
+      Call record_directive(iunit, message, 'edft_electrode_potential', simulation_data%set_directives%array(ic), ic)
+      Write (message,'(a,e10.3)')      'edft_nelec_thres : ', simulation_data%dft%gc%electron_threshold%value  
+      Call record_directive(iunit, message, 'edft_nelec_thres', simulation_data%set_directives%array(ic), ic)
     End If
 
    ! Magnetization 
@@ -740,36 +873,38 @@ Contains
        Write (iunit,'(a)') '%endblock hubbard'
    End If
 
-   ! Pseudo potentials
-   Write (iunit,'(a)') '  '
-   Write (iunit,'(a)') '#==== Pseudopotentials'
-   If (simulation_data%dft%onetep_paw) Then
-     Write (iunit,'(a)') 'paw : T'
-     Call record_directive(iunit, message, 'paw', simulation_data%set_directives%array(ic), ic) 
-   End If
-   Write (iunit,'(a)') '%block species_pot'
-   Do i=1, net_elements
-     j=1
-     loop=.True.
-     Do While (j <= simulation_data%total_tags .And. loop)
-       If (Trim(list_tag(i))==Trim(simulation_data%dft%pseudo_pot(j)%tag)) Then
-         Write (iunit,'(1x,a5,2x,a)') Trim(list_tag(i)), Trim(simulation_data%dft%pseudo_pot(j)%file_name)
-         loop=.False.
-       End If
-       j=j+1
-     End Do
-   End Do   
-   Write (iunit,'(a)') '%endblock species_pot'
-    
-   ! Initial Pseudo-atomic orbitals 
-   Write (iunit,'(a)') '  '
-   Write (iunit,'(a)') '#==== Initial pseudo-atomic orbital set'
-   Write (iunit,'(a)') '%block species_atomic_set'    
-   Do i=1, net_elements
-     Write (iunit,'(1x,a5,2x,a)') Trim(list_tag(i)), 'SOLVE'
-   End Do   
-   Write (iunit,'(a)') '%endblock species_atomic_set'    
+   If (simulation_data%dft%pp_info%stat) Then
+     ! Pseudo potentials
+     Write (iunit,'(a)') '  '
+     Write (iunit,'(a)') '#==== Pseudopotentials'
+     If (simulation_data%dft%onetep_paw) Then
+       Write (iunit,'(a)') 'paw : T'
+       Call record_directive(iunit, message, 'paw', simulation_data%set_directives%array(ic), ic) 
+     End If
+     Write (iunit,'(a)') '%block species_pot'
+     Do i=1, net_elements
+       j=1
+       loop=.True.
+       Do While (j <= simulation_data%total_tags .And. loop)
+         If (Trim(list_tag(i))==Trim(simulation_data%dft%pseudo_pot(j)%tag)) Then
+           Write (iunit,'(1x,a5,2x,a)') Trim(list_tag(i)), Trim(simulation_data%dft%pseudo_pot(j)%file_name)
+           loop=.False.
+         End If
+         j=j+1
+       End Do
+     End Do   
+     Write (iunit,'(a)') '%endblock species_pot'
 
+     ! Initial Pseudo-atomic orbitals 
+     Write (iunit,'(a)') '  '
+     Write (iunit,'(a)') '#==== Initial pseudo-atomic orbital set'
+     Write (iunit,'(a)') '%block species_atomic_set'    
+     Do i=1, net_elements
+       Write (iunit,'(1x,a5,2x,a)') Trim(list_tag(i)), 'SOLVE'
+     End Do   
+     Write (iunit,'(a)') '%endblock species_atomic_set'    
+   End If
+    
    ! block species
    Write (iunit,'(a)') '  '
    Write (iunit,'(a)') '#==== Block species'
@@ -788,8 +923,8 @@ Contains
              atomic_number=simulation_data%component(k)%atomic_number
              loop2=.False.
              ! Check if the size of the simulation cell is adequate for the radii of the NGWF defined	
-             Do ic = 1, 3
-               If (2*simulation_data%dft%ngwf(j)%radius >= simulation_data%cell_length(ic)) Then
+             Do ici = 1, 3
+               If (2*simulation_data%dft%ngwf(j)%radius >= simulation_data%cell_length(ici)) Then
                  Write (message,'(1x, 3a,f8.2,a)') '***PROBLEMS: the NGWF diameter of species ', &
                                      & Trim(simulation_data%dft%ngwf(j)%tag), ' is ',&
                                      & 2*simulation_data%dft%ngwf(j)%radius, ' Angstrom, which is larger than the size&
@@ -876,38 +1011,36 @@ Contains
 
    If (simulation_data%extra_info%stat) Then
      Write (iunit,'(a)') ' '
-     Write (iunit,'(a)') '##### User defined directives'
-     Write (iunit,'(a)') '#============================'
+     Write (iunit,'(a)') '##### Extra directives'
+     Write (iunit,'(a)') '#====================='
      found=.False.
      Do i=1, simulation_data%extra_directives%N0
        Write (iunit,'(a)') Trim(Adjustl(simulation_data%extra_directives%array(i)))
        If (Index(Trim(Adjustl(simulation_data%extra_directives%array(i))), '#') /= 1 ) Then
-         Read(simulation_data%extra_directives%array(i), Fmt=*) word, word2
-         Call capital_to_lower_case(word)
-         Call capital_to_lower_case(word)
-           If (Trim(word)=='&block' .And. Trim(word2)=='thermostat') Then
-             If (Trim(simulation_data%simulation%type) == 'md') Then
-               Write (message, '(1x,a)') '***ERROR in sub-block &extra_directives: "&block thermostat" CANNOT be defined as&
-                                        & part of &extra_directives. Please remove it.'
-               Call info(message, 1)                         
-               Call error_stop(' ')                         
-             End If  
-           Else
-           Call scan_extra_directive(simulation_data%extra_directives%array(i), simulation_data%set_directives, &
-                                 & ':', found, tag)         
+         If (Trim(simulation_data%extra_directives%key(i)) =='&block'     .And. &
+             Trim(simulation_data%extra_directives%set(i)) =='thermostat') Then
+           If (Trim(simulation_data%simulation%type) == 'md') Then
+             Write (message, '(1x,a)') '***ERROR in sub-block &extra_directives: "&block thermostat" CANNOT be defined as&
+                                      & part of &extra_directives. Please remove it.'
+             Call info(message, 1)                         
+             Call error_stop(' ')                         
+           End If  
+         Else
+           Call scan_extra_directive(simulation_data%extra_directives%key(i), simulation_data%set_directives, found)         
            If (found)Then
              Close(iunit)
              Call info(' ', 1)
-             Write (messages(1), '(1x,3a)') '***ERROR in sub-bock &extra_directives: directive "', Trim(tag),&
-                                     & '" has already been defined.'
+             Write (messages(1), '(1x,3a)') '***ERROR in sub-bock &extra_directives: directive "',&
+                                           & Trim(simulation_data%extra_directives%key(i)),&
+                                           & '" has already been defined.'
              Write (messages(2), '(1x,3a)') 'Please check temporary file ', Trim(files(FILE_SET_SIMULATION)%filename), &
                                      & '. The user must review the settings of &extra_directives.&
-                                     & Directives must not be duplicated.'
+                                     & Extra directives must not duplicate information.'
              Call info(messages, 2)
              Call error_stop(' ')
            Else
              simulation_data%set_directives%N0=simulation_data%set_directives%N0+1
-             simulation_data%set_directives%array(simulation_data%set_directives%N0)=Trim(tag)
+             simulation_data%set_directives%array(simulation_data%set_directives%N0)=Trim(simulation_data%extra_directives%key(i))
            End If
          End If 
        End If
@@ -933,7 +1066,12 @@ Contains
     Character(Len=256)  :: messages(9), header
     Character(Len=256)  :: in_extra
     Logical             :: warning, error, print_header
-    Integer(Kind=wi)    :: i
+    Integer(Kind=wi)    :: i, num_ref_data
+
+    ! Reference data to compare against &extra_directives
+    Type(type_ref_data) :: ref_extra_data(max_directives)
+    Character(Len=256)  :: exceptions(10)
+    Logical             :: extradir_header 
 
     warning=.False.
     print_header=.True.
@@ -961,23 +1099,49 @@ Contains
     Write (messages(6), '(1x, a)') ' - threads_num_mkl      (number of threads to use in MKL routines)'
     Write (messages(7), '(1x, a)') 'WARNING:'
     Write (messages(8), '(1x, a)') ' - "threads_max" must be equal to "threads_num_fftboxes" and both must be consistent with&
-                                   & the value of given to "export OMP_NUM_THREADS" en el job submission script'
+                                   & the value of given to "export OMP_NUM_THREADS" in the job submission script'
     Write (messages(9), '(1x, a)') ' - "threads_num_mkl" must only be defined is MKL is used for compilation'
     Call info(messages, 9)
+
     Call info(' ', 1)
     Write (messages(1), '(1x,a)')  'In case of problems in the electronic convergence, the user should:'
     Write (messages(2), '(1x,a)')  ' - check the number and radii of the NGWF for each species via block &ngwf' 
-    Write (messages(3), '(1x,2a)') ' - adjust the values for "minit_lnv" and "maxit_lnv" ', Trim(in_extra)
-    Write (messages(4), '(1x,a)')  ' - increase the value of "maxit_ngwf_cg" via ALC_EQCM directive "scf_steps"'
-    Write (messages(5), '(1x,2a)') ' - optimise the initialisation of the density kernel via "maxit_pulser_nano"&
-                                    &and/or "maxit_pen" ', Trim(in_extra)
+    Write (messages(3), '(1x,a)')  ' - increase the value of "maxit_ngwf_cg" via ALC_EQCM directive "scf_steps"'
+    Write (messages(4), '(1x,2a)') ' - optimise the initialisation of the density kernel via "maxit_palser_mano"&
+                                    & and "maxit_pen" ', Trim(in_extra)
+
     If (simulation_data%dft%edft%fread) Then
-      Write (messages(6), '(1x,a)')  ' - increase the value of "edft_extra_bands" using the ALC_EQCM directive "bands"'
-      Write (messages(7), '(1x,a)')  ' - change the value of "edft_smearing_width" via the ALC_EQCM directive "width_smearing"'
-      Write (messages(8), '(1x,2a)') ' - increase the value of "edft_init_maxit" ', Trim(in_extra)
-      Call info(messages, 8)
+      Call set_reference_database(ref_extra_data, num_ref_data,'ONETEP', 'EDFT')
+      exceptions(1)='edft_ham_diis_size'
+      extradir_header=.False.      
+      Write (messages(5), '(1x,a)')  '===== EDFT convergence'
+      Write (messages(6), '(1x,a)')  ' - increase the value of directive "bands"'
+      Write (messages(7), '(1x,a)')  ' - change the value of directive "width_smearing"'
+      Call info(messages, 7)
+      Call check_settings_set_extra_directives(ref_extra_data, num_ref_data, simulation_data%extra_directives,&
+                                         & exceptions, 1, extradir_header)
+      If (Trim(simulation_data%dft%mixing%type) == 'damp_fixpoint') Then
+        Call check_settings_single_extra_directive('edft_ham_diis_size', ref_extra_data, num_ref_data,&
+                                             & simulation_data%extra_directives, extradir_header, 'mixing_scheme')      
+        Write (messages(1), '(1x,a)')  'If the above does not work, change directive "mixing_scheme" to "Pulay"'
+      Else If (Trim(simulation_data%dft%mixing%type) == 'pulay') Then
+        Call check_settings_single_extra_directive('edft_ham_diis_size', ref_extra_data, num_ref_data,&
+                                             & simulation_data%extra_directives, extradir_header)      
+        Write (messages(1), '(1x,a)')  'If the above does not work, change directive "mixing_scheme" to "Damp_Fixpoint"'
+      End If        
+      Write (messages(2), '(1x,a)')  '======================'
+      Call info(messages, 2)
     Else
-      Write (messages(6), '(1x,a)')  ' - check if the system tends to metallise, in which case the user must ser EDFT'
+      If (Trim(simulation_data%dft%mixing%type) /= 'lnv') Then
+        Write (messages(5), '(1x,3a)') ' - define/change LNV related keywords ("minit_lnv", "maxit_lnv", etc) ',&
+                                       & Trim(in_extra), ' (see ONETEP manual). Alternatively, change the option for&
+                                       & directive "mixing_scheme"' 
+      Else
+        Write (messages(5), '(1x,3a)') ' - define/change KERNEL_DIIS keywords for control, tolerance and/or level-shift ',&
+                               & Trim(in_extra), ' (see ONETEP manual). Alternatively, change the option for directive&
+                               & "mixing_scheme"' 
+      End If        
+      Write (messages(6), '(1x,a)')  ' - IMPORTANT: check if the system tends to metallise, in which case set "EDFT" to .True.'
       Call info(messages, 6)
     End If   
 
@@ -985,10 +1149,15 @@ Contains
       Write (messages(1), '(1x,2a)') 'For linear scaling DFT the user should optimise "kernel_cutoff" ', Trim(in_extra)
       Call info(messages, 1)
     End If   
+  
+    ! SCALAPACK
+    Write (messages(1), '(1x,a)')  'If ONETEP is interfaced to SCALAPACK, diretives "eigensolver_orfac" and&
+                                   & "eigensolver_abstol" can be used.'
+    Call info(messages, 1)
 
     Write (messages(1), '(1x,3a)') 'I/O can be controlled ', Trim(in_extra), ' with the following directives (see ONETEP manual):'
-    Write (messages(2), '(1x,a)')  ' - write_denskern, write_tightbox_ngwfs, write_converged_dk_ngwfs'
-    Write (messages(3), '(1x,a)')  ' - read_denskern, read_tightbox_ngwfs, read_hamiltonian (EDFT)'
+    Write (messages(2), '(1x,a)')  ' - write_denskern, write_tightbox_ngwfs, write_converged_dk_ngwfs, write_hamiltonian'
+    Write (messages(3), '(1x,a)')  ' - read_denskern, read_tightbox_ngwfs, read_hamiltonian'
     Write (messages(4), '(1x,a)')  ' - output_detail (to specify the level of detail for the generated output)'
     Call info(messages, 4)
    
@@ -1089,9 +1258,8 @@ Contains
             Write (messages(1), '(1x,a)')  ' - changing "tau" using ALC_EQCM directive "relax_time_thermostat"'
             Call info(messages, 1)  
             Write (messages(1), '(1x,a)')  'Unfortunately, due to the structure of "%block thermostat", changes to the following&
-                                       & directives, if required, must be applied manually (&extra_directives cannot be used)'
+                                     & directives, if required, must be applied manually (block &extra_directives cannot be used)'
           If (Trim(simulation_data%motion%thermostat%type) == 'nose-hoover') Then
-          
             Write (messages(2), '(1x,a)')  ' - "nchain" (number of thermostats in the Nose-Hoover chain)'
             Write (messages(3), '(1x,a)')  ' - "nstep"  (number of substeps used to integrate the equation of motion&
                                           & of the Nose-Hoover coordinates)'

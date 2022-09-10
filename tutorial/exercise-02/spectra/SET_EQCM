@@ -4,4 +4,4 @@ Software      QMC200                   # Acquisition software (optional)
 Analysis      spectra                  # Print raw data
 sauerbrey     -0.0769231 Hz ng-1 cm2   # Sauerbrey factor
 Quartz_freq   5.0 MHz                  # Quartz frequency
-endpoints_mass_frequency    2          # points for FFT padding
+endpoints_mass    2                    # points for FFT padding

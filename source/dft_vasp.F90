@@ -134,60 +134,64 @@ Contains
 
     ! Pseudopotentials
     !!!!!!!!!!!!!!!!!!
-    ! Check consistency between pseudpotentials and XC directive
-    Do i=1, simulation_data%total_tags
-      exec_grep='grep "LEXC" '//Trim(pp_path)//Trim(simulation_data%dft%pseudo_pot(i)%file_name)//' > xc.dat'
-      Call execute_command_line(exec_grep)
-      Open(Newunit=internal, File='xc.dat' ,Status='old')
-      Read (internal, Fmt=*, iostat=io) word, word, word
-      If (Trim(word)=='PE') Then
-        xc='pbe'
-      Else If (Trim(word)=='91') Then
-        xc='pw91'
-      Else If (Trim(word)=='CA') Then
-        xc='ca'
-      End If
-      If (Trim(xc) /= Trim(simulation_data%dft%xc_base)) Then
-        Write (message,'(1x,5a)') '***ERROR in ',  Trim(pp_path),' folder: File ',&
-                           & Trim(simulation_data%dft%pseudo_pot(i)%file_name), &
-                           & ' corresponds to a exchange-correlation type of functional that is different from the option&
-                           & specified in directive "XC_version". Please check if this PP is consistent with VASP.'
-        Call error_stop(message)
-      End If
-      Close(internal)
-      Call execute_command_line('rm xc.dat')
-    End Do
-
-    ! Check consistency between pseudpotentials and elements
-    Do i=1, simulation_data%total_tags
-      path=Trim(pp_path)//Trim(simulation_data%dft%pseudo_pot(i)%file_name)
-      Open(Newunit=internal, File=path ,Status='old')
-      Read (internal, Fmt=*, iostat=io) word, word2, word3 
-      If (io /= 0 ) Then
-        Write (message,'(1x,10a)') '***ERROR in ', Trim(pp_path), ' folder: File ', &
-                                   Trim(simulation_data%dft%pseudo_pot(i)%file_name), ' appears to have the wrong headings.&
-                                 & Please check.'
-        Call error_stop(message)
-      End If
-      ipos= Index(word2,'_') 
-      If (ipos /= 0) Then
-        word2(ipos:256)=' ' 
-      End If 
-      If (Trim(word2) /= Trim(simulation_data%dft%pseudo_pot(i)%element)) Then
-        Write (message,'(1x,10a)') '***ERROR in ', Trim(pp_path), ' folder: File ', &
-                           & Trim(simulation_data%dft%pseudo_pot(i)%file_name), &
-                           & ' corresponds to element "', Trim(word2), '", which does not agree with with the element&
-                           & associated with tag "', Trim(simulation_data%dft%pseudo_pot(i)%tag), '" as set in&
-                           & "&pseudo_potentials". Please check if this PP is consistent with VASP.'
-        Call error_stop(message)
-      End If
-      Do k=1, simulation_data%total_tags
-        If (Trim(simulation_data%component(k)%tag)==Trim(simulation_data%dft%pseudo_pot(i)%tag)) Then 
-          Read (internal, Fmt=*, iostat=io) simulation_data%component(k)%valence_electrons
+    If (simulation_data%dft%pp_info%stat) Then 
+      ! Check consistency between pseudpotentials and XC directive
+      Do i=1, simulation_data%total_tags
+        exec_grep='grep "LEXC" '//Trim(pp_path)//Trim(simulation_data%dft%pseudo_pot(i)%file_name)//' > xc.dat'
+        Call execute_command_line(exec_grep)
+        Open(Newunit=internal, File='xc.dat' ,Status='old')
+        Read (internal, Fmt=*, iostat=io) word, word, word
+        If (Trim(word)=='PE') Then
+          xc='pbe'
+        Else If (Trim(word)=='91') Then
+          xc='pw91'
+        Else If (Trim(word)=='CA') Then
+          xc='ca'
         End If
+        If (Trim(xc) /= Trim(simulation_data%dft%xc_base)) Then
+          Write (message,'(1x,5a)') '***ERROR in ',  Trim(pp_path),' folder: File ',&
+                             & Trim(simulation_data%dft%pseudo_pot(i)%file_name), &
+                             & ' corresponds to a exchange-correlation type of functional that is different from the option&
+                             & specified in directive "XC_version". Please check if this PP is consistent with VASP.'
+          Call error_stop(message)
+        End If
+        Close(internal)
+        Call execute_command_line('rm xc.dat')
       End Do
-      Close(internal)
-    End Do
+
+      ! Check consistency between pseudpotentials and elements
+      Do i=1, simulation_data%total_tags
+        path=Trim(pp_path)//Trim(simulation_data%dft%pseudo_pot(i)%file_name)
+        Open(Newunit=internal, File=path ,Status='old')
+        Read (internal, Fmt=*, iostat=io) word, word2, word3 
+        If (io /= 0 ) Then
+          Write (message,'(1x,10a)') '***ERROR in ', Trim(pp_path), ' folder: File ', &
+                                     Trim(simulation_data%dft%pseudo_pot(i)%file_name), ' appears to have the wrong headings.&
+                                   & Please check.'
+          Call error_stop(message)
+        End If
+        ipos= Index(word2,'_') 
+        If (ipos /= 0) Then
+          word2(ipos:256)=' ' 
+        End If 
+        If (Trim(word2) /= Trim(simulation_data%dft%pseudo_pot(i)%element)) Then
+          Write (message,'(1x,10a)') '***ERROR in ', Trim(pp_path), ' folder: File ', &
+                             & Trim(simulation_data%dft%pseudo_pot(i)%file_name), &
+                             & ' corresponds to element "', Trim(word2), '", which does not agree with with the element&
+                             & associated with tag "', Trim(simulation_data%dft%pseudo_pot(i)%tag), '" as set in&
+                             & "&pseudo_potentials". Please check if this PP is consistent with VASP.'
+          Call error_stop(message)
+        End If
+        Do k=1, simulation_data%total_tags
+          If (Trim(simulation_data%component(k)%tag)==Trim(simulation_data%dft%pseudo_pot(i)%tag)) Then 
+            Read (internal, Fmt=*, iostat=io) simulation_data%component(k)%valence_electrons
+          End If
+        End Do
+        Close(internal)
+      End Do
+    Else
+      !!!!!!!!!!!!!!!! print message      
+    End If
 
     ! vdW settings
     !!!!!!!!!!!!!!!!!!!!!!
@@ -316,13 +320,6 @@ Contains
       End If
     End If
 
-    ! EDFT 
-    If (simulation_data%dft%edft%stat) Then
-      Write (message,'(2(1x,a))') Trim(error_dft), 'Requested Ensemble-DFT for metals/semiconductors via directive "EDFT"&
-                                 & is not possible for VASP simulations. Please remove it'
-      Call error_stop(message)
-    End If
-
     ! Orbital transformation
     If (simulation_data%dft%ot%stat) Then
       Write (message,'(2(1x,a))') Trim(error_dft), 'Requested Orbital Transformation via directive "OT"&
@@ -369,6 +366,25 @@ Contains
       Write (message,'(2(1x,a))') Trim(error_dft), 'The user must specify directive "precision" for VASP simulation'
       Call error_stop(message)
     End If
+
+   ! Mixing
+   If (simulation_data%dft%mixing%fread) Then
+     If (Trim(simulation_data%dft%mixing%type)   /= 'kerker'       .And.&
+        Trim(simulation_data%dft%mixing%type)    /= 'tchebycheff'  .And.&
+        Trim(simulation_data%dft%mixing%type)    /= 'broyden-2nd'  .And.&
+        Trim(simulation_data%dft%mixing%type)    /= 'pulay')   Then
+        Write (messages(1),'(2(1x,a))') Trim(error_dft), &
+                                     &'Invalid specification of directive "mixing_scheme" for VASP. Options are:'
+        Write (messages(2),'(1x,a)') '- Kerker'
+        Write (messages(3),'(1x,a)') '- Tchebycheff'
+        Write (messages(4),'(1x,a)') '- Broyden-2nd'
+        Write (messages(5),'(1x,a)') '- Pulay'
+        Call info(messages, 5)
+        Call error_stop(' ')
+     End If
+   Else
+     simulation_data%dft%mixing%type='pulay'
+   End If
 
     ! Smear
     If (simulation_data%dft%smear%fread) Then
@@ -550,7 +566,9 @@ Contains
     If (simulation_data%extra_info%stat) Then
       ! Check if user defined directives contain only symbol "="
       Do i = 1, simulation_data%extra_directives%N0
-        Call check_extra_directives(simulation_data%extra_directives%array(i), '=', 'VASP', i)
+        Call check_extra_directives(simulation_data%extra_directives%array(i), &
+                                    simulation_data%extra_directives%key(i),   &
+                                    simulation_data%extra_directives%set(i), '=', 'VASP')
       End Do
     End If
       
@@ -576,7 +594,7 @@ Contains
     Character(Len=256) :: mag, nel, mag_list(max_components), mag_final
     Character(Len=256) :: mass_list(max_components), mass_final
     Character(Len=256) :: pseudo_list(max_components), pseudo_final
-    Character(Len=256) :: exec_cat, pp_path, tag
+    Character(Len=256) :: exec_cat, pp_path
     Character(Len=256) :: message, messages(2) 
     Real(Kind=wp)      :: number_electrons
     Real(Kind=wp)      :: mag_ini(max_components)
@@ -614,28 +632,36 @@ Contains
     Call record_directive(iunit, message, 'EDIFF', simulation_data%set_directives%array(ic), ic)
     If (Trim(simulation_data%dft%smear%type) == 'gaussian') Then
       Write (message,'(a)')      'ISMEAR = 0   # Gaussian mearing'
-      Call record_directive(iunit, message, 'ISMEAR', simulation_data%set_directives%array(ic), ic)
     Else If (Trim(simulation_data%dft%smear%type) == 'fermi') Then
       Write (message,'(a)')      'ISMEAR = -1  # Fermi smearing'
-      Call record_directive(iunit, message, 'ISMEAR', simulation_data%set_directives%array(ic), ic)
     Else If (Trim(simulation_data%dft%smear%type) == 'mp') Then
       Write (message,'(a)')      'ISMEAR =  2  # MP (Methfessel-Paxton order 2)'  
-      Call record_directive(iunit, message, 'ISMEAR', simulation_data%set_directives%array(ic), ic)
     Else If (Trim(simulation_data%dft%smear%type) == 'tetrahedron') Then
       Write (message,'(a)')      'ISMEAR =  -5  # Tetrahedron'  
-      Call record_directive(iunit, message, 'ISMEAR', simulation_data%set_directives%array(ic), ic)
     End If
+    Call record_directive(iunit, message, 'ISMEAR', simulation_data%set_directives%array(ic), ic)
     If (Trim(simulation_data%dft%smear%type) /= 'tetrahedron') Then
       Write (message,'(a,f6.2,a)') 'SIGMA = '  , simulation_data%dft%width_smear%value, ' # Smearing width in eV'
       Call record_directive(iunit, message, 'SIGMA', simulation_data%set_directives%array(ic), ic)
     End If
     If (simulation_data%dft%spin_polarised%stat) Then
       Write (message,'(a)')      'ISPIN =  2  # Spin-polarised' 
-      Call record_directive(iunit, message, 'ISPIN', simulation_data%set_directives%array(ic), ic)
     Else
       Write (message,'(a)')      'ISPIN =  1  # Non spin-polarised' 
-      Call record_directive(iunit, message, 'ISPIN', simulation_data%set_directives%array(ic), ic)
     End If
+    Call record_directive(iunit, message, 'ISPIN', simulation_data%set_directives%array(ic), ic)
+
+    ! Mixing
+    If (Trim(simulation_data%dft%mixing%type)         == 'kerker') Then
+       Write (message,'(a)')      'IMIX =  1  # Kerker mixing' 
+    Else If (Trim(simulation_data%dft%mixing%type)    == 'tchebycheff') Then 
+       Write (message,'(a)')      'IMIX =  2  # Tchebycheff mixing' 
+    Else If (Trim(simulation_data%dft%mixing%type)    == 'broyden-2nd') Then
+       Write (message,'(a)')      'IMIX =  4 ; WC=0   # Broyden-2nd mixing' 
+    Else If (Trim(simulation_data%dft%mixing%type)    == 'pulay')   Then
+       Write (message,'(a)')      'IMIX =  4  # Pulay mixing' 
+    End If
+    Call record_directive(iunit, message, 'IMIX', simulation_data%set_directives%array(ic), ic)
 
    ! Define the XC part
     If (Trim(simulation_data%dft%xc_version%type) == 'ca') Then
@@ -1121,19 +1147,19 @@ Contains
 
    If (simulation_data%extra_info%stat) Then
      Write (iunit,'(a)') ' '
-     Write (iunit,'(a)') '##### User defined directives'
-     Write (iunit,'(a)') '#============================'
+     Write (iunit,'(a)') '##### Extra directives'
+     Write (iunit,'(a)') '#====================='
      found=.False.
      Do i=1, simulation_data%extra_directives%N0
        Write (iunit,'(a)') Trim(Adjustl(simulation_data%extra_directives%array(i)))
        If (Index(Trim(Adjustl(simulation_data%extra_directives%array(i))), '#') /= 1 ) Then
-         Call scan_extra_directive(simulation_data%extra_directives%array(i), simulation_data%set_directives, &
-                                 & '=', found, tag)         
+         Call scan_extra_directive(simulation_data%extra_directives%key(i), simulation_data%set_directives,found)         
          If (found)Then
            Close(iunit)
            Call info(' ', 1)
-           Write (messages(1), '(1x,3a)') '***ERROR in sub-bock &extra_directives: directive "', Trim(tag),&
-                                     & '" has already been defined.'
+           Write (messages(1), '(1x,3a)') '***ERROR in sub-bock &extra_directives: directive "', &
+                                         & Trim(simulation_data%extra_directives%key(i)),&
+                                         & '" has already been defined.'
            Write (messages(2), '(1x,3a)') 'Please check temporary file ', Trim(files(FILE_SET_SIMULATION)%filename), &
                                      & '. The user must review the settings of &extra_directives.&
                                      & Directives must not be duplicated.'
@@ -1141,7 +1167,7 @@ Contains
            Call error_stop(' ')
          Else
            simulation_data%set_directives%N0=simulation_data%set_directives%N0+1
-           simulation_data%set_directives%array(simulation_data%set_directives%N0)=Trim(tag)
+           simulation_data%set_directives%array(simulation_data%set_directives%N0)=Trim(simulation_data%extra_directives%key(i))
          End If
        End If
      End Do
@@ -1164,22 +1190,23 @@ Contains
 
    Close(iunit)
 
-   ! Pseudo potentials
-   Do i=1, net_elements
-     j=1
-     loop=.True.
-     Do While (j <= simulation_data%total_tags .And. loop)
-       If (Trim(list_element(i))==Trim(simulation_data%dft%pseudo_pot(j)%element)) Then
-         pseudo_list(i)= Trim(pp_path)//Trim(simulation_data%dft%pseudo_pot(j)%file_name)
-         loop=.False.
-       End If
-       j=j+1
+   If (simulation_data%dft%pp_info%stat) Then
+     ! Pseudo potentials
+     Do i=1, net_elements
+       j=1
+       loop=.True.
+       Do While (j <= simulation_data%total_tags .And. loop)
+         If (Trim(list_element(i))==Trim(simulation_data%dft%pseudo_pot(j)%element)) Then
+           pseudo_list(i)= Trim(pp_path)//Trim(simulation_data%dft%pseudo_pot(j)%file_name)
+           loop=.False.
+         End If
+         j=j+1
+       End Do
      End Do
-   End Do
-
-   Write (pseudo_final,'(*(1x,a))') (Trim(pseudo_list(i)), i=1, net_elements)
-   exec_cat= 'cat '//Trim(pseudo_final)//' > POTCAR'
-   Call execute_command_line(exec_cat)
+     Write (pseudo_final,'(*(1x,a))') (Trim(pseudo_list(i)), i=1, net_elements)
+     exec_cat= 'cat '//Trim(pseudo_final)//' > POTCAR'
+     Call execute_command_line(exec_cat)
+   End If
 
   End Subroutine print_vasp_settings
 
@@ -1191,7 +1218,7 @@ Contains
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     Type(simul_type),   Intent(In   ) :: simulation_data
 
-    Character(Len=256) :: messages(7), message, header
+    Character(Len=256) :: messages(8), message, header
     Character(Len=256) :: in_extra
     Logical            :: warning, error, print_header
     Integer(Kind=wi)   :: i
@@ -1199,18 +1226,6 @@ Contains
     in_extra='using the &extra_directives block'
     warning=.False.
     print_header=.True.
-
-    If (simulation_data%extra_info%fread) Then
-      Call info(' ', 1)
-      Call info(' ***WARNING****************', 1)
-      Write (messages(1), '(1x,a)') ' - ALC_EQCM only checked that the information added in "&extra_directives" has not been'
-      Write (messages(2), '(1x,a)') '   already defined from the settings provided in "&block_simulation_settings"'   
-      Write (messages(3), '(1x,a)') ' - specification of directives in "&extra_directives" for functionalities that are not'
-      Write (messages(4), '(1x,a)') '   implemented in ALC_EQCM have been printed, but its correctness is full responsibility&
-                                    & of the user'
-      Call info(messages, 4)
-      Call info(' **************************', 1)
-    End If
 
     Call info(' ', 1)
     Write (messages(1), '(1x,a)')  'The efficiency in the parallelization can be optimised by:'
@@ -1221,12 +1236,17 @@ Contains
     Write (messages(6), '(1x,a)')  ' - increasing the value of NBANDS via ALC_EQCM directive "bands"'
     Write (messages(7), '(1x,2a)') ' - changing the settings of MAXMIX, NELMIN and NELMDL ', Trim(in_extra)
     Call info(messages, 7)
+    If (Trim(simulation_data%dft%mixing%type)  == 'pulay' .Or. Trim(simulation_data%dft%mixing%type)  == 'broyden-2nd') Then
+      Write (messages(1), '(1x,3a)')  ' - changing default values for MIXPRE and INIMIX ', Trim(in_extra), ' (see manual)' 
+      Call info(messages, 1)
+    End If    
     If (Trim(simulation_data%dft%smear%type) /= 'tetrahedron') Then
       Write (messages(1), '(1x,a)')  ' - increasing the value of SIGMA via ALC_EQCM directive "width_smear"'
       Call info(messages, 1)
     End If 
-    Write (messages(1), '(1x,2a)') 'If problems persist, try setting "IALGO = 48" ', Trim(in_extra)
-    Call info(messages, 1)
+    Write (messages(1), '(1x,a)')  ' - selecting a different option for "mixing_scheme"'
+    Write (messages(2), '(1x,2a)') 'If problems persist, try setting "IALGO = 48" ', Trim(in_extra)
+    Call info(messages, 2)
 
     If (simulation_data%dft%total_kpoints > 1) Then
       If (simulation_data%dft%kpar%value==1) Then

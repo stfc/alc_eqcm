@@ -1,14 +1,13 @@
-EQCM testing platform 
-----------------------
-----------------------
+--------------------------------------------
+--------------------------------------------
+Description of the ALC_EQCM testing platform 
 
 Author: i.scivetti  Oct 2020
+Lastest modification: i.scivetti Sep 2022
+--------------------------------------------
+--------------------------------------------
+ALC_EQCM uses the following tests, which provide reference data to be compared against. These tests are stored in ".tar" format. Via the do_test macro, these .tar files are unpacked automatically upon the execution of any to the xxx-test.sh inside the folder "tools".
 
-ALC_EQCM uses the following tests, which provide reference data to be compared against. These tests are stored in ".tar" format. Via the do_test macro, these .tar files are unpacked automatically upon the execution of any to the xxx-test.sh inside the folder "tools" 
-and run via Cmake in the corresponding directory. 
-
-Description of tests
---------------------
 ####################
 # EQCM data analysis
 ####################
@@ -20,7 +19,6 @@ test  5: Intercalation/De-intercalation of Li+ ions into/from a (NiOH)2 host (ch
 test  6: Electrodeposition of Ag on Pt (mass calibration)
 test  7: Intercalation/De-intercalation of Li+ ions into/from a (NiOH)2 host (characterization of the accumulated charge only)
 test  8: Intercalation/De-intercalation of Li+ ions into/from a (NiOH)2 host (Print raw EQCM values between a given voltage range)
-test 25: Compute massogram for intercalation of K+ ions into/from a (NiOH)2 host
 
 ########################################
 # Solution of the stoichiometric problem
@@ -57,7 +55,7 @@ test 29: Intercalation (bulk- nickel oxy-hydroxide) - Building an atomistic mode
 test 30: Intercalation (bulk- nickel oxy-hydroxide) - Building an atomistic model of the pristine structure with target stoichiometry as set in the &Block_Species. Species involved are water, benzene, caffeine, Li+ and H+ (vasp format)
 test 31: Intercalation (bulk- nickel oxy-hydroxide) - Building an atomistic model of the pristine structure with target stoichiometry as set in the &Block_Species. Species involved are water, benzene, caffeine, Li+ and H+ (xyz format)
 test 32: Intercalation (bulk- nickel oxy-hydroxide) - Building an atomistic model of the pristine structure with target stoichiometry [(NiO2)H_0.20 (H2O)_0.33 K_0.354] 
-test 33: Intercalation (bulk- nickel oxy-hydroxide) - Building an atomistic model of a cycled sample with stoichiometric solutions computed via constraints. Li+, H2O and H+ participate in the reaction  
+test 33: Intercalation (bulk- nickel oxy-hydroxide) - Building an atomistic model of a cycled sample with stoichiometric solutions computed via constraints. Li+, H2O and H+ participate in the reaction. Add mass to DATA_EQCM  
 test 34: Intercalation (bulk- nickel oxy-hydroxide) - Building an atomistic model of a cycled sample with stoichiometric solutions computed via constraints. K+, H2O and H+ participate in the reaction. Format for the generated models: cp2k
 test 35: Intercalation (bulk- nickel oxy-hydroxide) - Building an atomistic model of a cycled sample with stoichiometric solutions only for the first oxidation. 7 models are generated. Li+, H2O and H+ participate in the reaction. 7 models are generated.
 test 36: Intercalation (bulk- nickel oxy-hydroxide) - Building an atomistic model of a cycled sample with stoichiometric solutions only for the first oxidation. Na+, Li+, H2O and H+ participate in the (fictitious) reaction. 17 models are generated.
@@ -86,5 +84,19 @@ test 53: Test 50 adapted to generate simulations files for CASTEP execution.
 ####################################################
 # Building an atomistic model of a disordered system 
 ####################################################
-test 54: a single Li atom in a box of 32 water molecules
+test 54: Test 52 adapted to generate simulations files for CASTEP execution (&mass block)
+
+test 56: Test 49 in CP2K format without specification for &pseudo_potentials and &basis_sets. No vdW corrections
+test 57: Test 48 adapted to generate simulations files for ONETEP execution. No &pseudo_potentials 
+test 58: Test 49 adapted to generate simulations files for ONETEP execution. No &pseudo_potentials  
+test 59: Test 50 adapted to generate simulations files for ONETEP execution. No &pseudo_potentials 
+test 60: Test 48 adapted to generate simulations files for VASP   execution. No &pseudo_potentials 
+test 61: Test 49 adapted to generate simulations files for VASP   execution. No &pseudo_potentials. Geometry relaxation
+test 62: Test 49 adapted to generate simulations files for VASP   execution. No &pseudo_potentials. No vdW corrections. Molecular dynamics
+test 63: GC+EDFT test for ONETEP. Pt surface with H+ deposited in contact with few layers of water. No &pseudo_potentials
+
+#############################################################
+# Building an atomistic model of a disordered system (no DFT)
+#############################################################
+test 55: a single Li atom in a box of 32 water molecules
 

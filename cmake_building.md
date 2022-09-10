@@ -16,7 +16,7 @@ The following two softwares are only needed when working with atomic structures 
 Information in parenthesis indicates the minimum version tested during the development of the code. The specification for the minimum versions is not fully rigorous but indicative, as there could be combinations of other minimum versions that still work. Our tests indicate that versions of Intel compiler older than 16.0.1 exhibit problems and should be avoided.
  
 ## Building the code
-In the following, we assume the code has been downloaded to folder ***alc_eqcm*** at the location */home/username/codes*, in the local machine *wherever* of the account *"username"*. Please refer to section **Getting started** of the [README.md](./README.md) file for instructions to download the code.
+In the following, we assume the code has been downloaded to folder ***alc_eqcm*** at the location */home/username/codes*, in the remote machine *wherever* of the account *"username"*. Please refer to file [README.md](./README.md) for instructions to download the code.
 
 ### Building manually
 For manual compilation with CMake, the user must create a folder where to compile the code from. It is good practise to name this folder using the word *"build"* together with any other specification that indicates the type of compilation. For example, if the user aims to build ALC_EQCM using the GNU-Fortran compiler in Debugging mode, the folder could be named *"build-gnu-debug"*:
@@ -161,10 +161,13 @@ username@wherever:/home/username/codes/alc_eqcm/test-gnu-debug$ ctest --output-o
 Test project home/username/codes/alc_eqcm/test-gnu-debug
     Start 10: test10
 1/1 Test #10: test10 ...........................***Failed    0.17 sec
- *********************************************
- ** ERROR !!! ERROR !!! ERROR !!! ERROR !!! **
- ** Please see details in the OUT_EQCM file **
- *********************************************
+*******************************************************
+** ERROR !!! ERROR !!! ERROR !!! ERROR !!! ERROR !!! **
+*******************************************************
+**  Please see details in the OUT_EQCM file. If the  **
+**  error message makes no sense, check that the     **
+**  input files are free of non-ASCII characters     **
+*******************************************************
 ERROR STOP
 *** EXECUTION FAILED ***
 

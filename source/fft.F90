@@ -42,9 +42,9 @@ Module fft
     Real(kind=wp),    Public, Allocatable :: magnitude(:) 
     ! number of measured points to be averaged for padding (current)
     Type(in_integer), Public               :: end_current  
-    ! number of measured points to be averaged for padding (mass frequency)
-    Type(in_integer), Public               :: end_mass_frequency  
-    ! Largest value of endpoints between endpoints_mass_frequency and endpoints_current
+    ! number of measured points to be averaged for padding (mass/mass-density)
+    Type(in_integer), Public               :: end_mass  
+    ! Largest value of endpoints between endpoints_mass and endpoints_current
     Integer(Kind=wi), Public               :: endpoints=0
   End Type fft_type
 
