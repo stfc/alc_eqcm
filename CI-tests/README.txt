@@ -80,11 +80,9 @@ test 50: Test 35, only 3 models generated. Files are generated in CP2K format.
 test 51: Test 48 adapted to generate simulations files for CASTEP execution. 
 test 52: Test 49 adapted to generate simulations files for CASTEP execution. 
 test 53: Test 50 adapted to generate simulations files for CASTEP execution. 
-
-####################################################
-# Building an atomistic model of a disordered system 
-####################################################
 test 54: Test 52 adapted to generate simulations files for CASTEP execution (&mass block)
+
+test 55: Disordered system: a single Li atom in a box of 32 water molecules
 
 test 56: Test 49 in CP2K format without specification for &pseudo_potentials and &basis_sets. No vdW corrections
 test 57: Test 48 adapted to generate simulations files for ONETEP execution. No &pseudo_potentials 
@@ -95,8 +93,16 @@ test 61: Test 49 adapted to generate simulations files for VASP   execution. No 
 test 62: Test 49 adapted to generate simulations files for VASP   execution. No &pseudo_potentials. No vdW corrections. Molecular dynamics
 test 63: GC+EDFT test for ONETEP. Pt surface with H+ deposited in contact with few layers of water. No &pseudo_potentials
 
-#############################################################
-# Building an atomistic model of a disordered system (no DFT)
-#############################################################
-test 55: a single Li atom in a box of 32 water molecules
+## Implicit solvent
+test 64: GC+EDFT test for ONETEP. Pt surface with H+ deposited in contact with few layers of water. No &pseudo_potentials. Implicit solvent: andreussi, fixed cavity, SASA apolar corrections
+test 65: GC+EDFT test for ONETEP. Pt surface with H+ deposited in contact with few layers of water. No &pseudo_potentials. Implicit solvent: FGF model, fixed cavity, SAV apolar corrections
+test 66: GC+EDFT test for ONETEP. Pt surface with H+ deposited in contact with few layers of water. No &pseudo_potentials. Implicit solvent: soft_spheres model, fixed cavity, only cavitation
+test 67: GC+EDFT test for ONETEP. Pt surface with H+ deposited in contact with few layers of water. No &pseudo_potentials. Implicit solvent: soft_spheres model, self-consistent cavity, SASA apolar correction
 
+## Implicit solvent + Boltzmann electrolye
+test 68: Test 64 with NaCl electrolyte. Full solver.
+test 69: Test 64 with NaCl electrolyte. Linearised solver.
+test 70: Test 64 with NaCl electrolyte. Soft-sphere radii
+
+## EQCM characterization, stoichiometry and modelling for a given voltage range
+test 71: Intercalation/De-intercalation of Li+ ions into/from a (NiOH)2 host 

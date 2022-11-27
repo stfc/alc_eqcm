@@ -21,57 +21,57 @@
 ! Contribution - i.scivetti  June-August   2021 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 Module atomistic_models 
-  Use constants,        Only : avogadro,&
-                               Bohr_to_A,&
-                               chemsymbol, & 
-                               cm_to_Ang, &
-                               max_components,&
-                               NPTE,&
-                               twopi
-                               
-  Use dft_castep,       Only : print_castep_settings
-  Use dft_cp2k,         Only : print_cp2k_settings
-  Use dft_onetep,       Only : print_onetep_settings
-  Use dft_vasp,         Only : print_vasp_settings
-                               
-  Use electrode,        Only : electrode_type
-  Use eqcm,             Only : eqcm_type
-  Use fileset,          Only : file_type,              &
-                               FILE_INTERCALATION_OX,  &
-                               FILE_INTERCALATION_RED, &
-                               FILE_INPUT_STRUCTURE,   &
-                               FILE_MODEL_SUMMARY,     &
-                               FILE_OUTPUT_STRUCTURE,  &
-                               FILE_SELECTED_SOLUTIONS,&
-                               FILE_SET_EQCM,          &
-                               FILE_HPC_SETTINGS, &
-                               FILE_KPOINTS, &
-                               FILE_RECORD_MODELS,&
-                               FILE_SET_SIMULATION, &
-                               FOLDER_ANALYSIS, &
-                               FOLDER_RESTART,&
-                               FOLDER_DFT, &
-                               FOLDER_INPUT_GEOM, &
-                               FOLDER_MODELS, &
-                               refresh_out_eqcm
-  Use hpc_setup,        Only : hpc_type, &
-                               summary_hpc_settings 
-  Use input_types,      Only : in_integer, &
-                               in_integer_array, & 
-                               in_logic,   &
-                               in_string,  &
-                               in_param,   &
-                               in_scalar
-  Use numprec,          Only : li, &
-                               wi, &
-                               wp
-  Use process_data,     Only : capital_to_lower_case 
-  Use redox,            Only : redox_type
-  Use simulation_setup, Only : summary_simulation_settings,&
-                               warning_simulation_settings
-  Use simulation_tools, Only : simul_type
-  Use stoichiometry,    Only : stoich_type
-  Use unit_output,      Only : error_stop,&
+  Use constants,          Only : avogadro,&
+                                 Bohr_to_A,&
+                                 chemsymbol, & 
+                                 cm_to_Ang, &
+                                 max_components,&
+                                 NPTE,&
+                                 twopi
+                                 
+  Use code_castep,        Only : print_castep_settings
+  Use code_cp2k,          Only : print_cp2k_settings
+  Use code_onetep,        Only : print_onetep_settings
+  Use code_vasp,          Only : print_vasp_settings
+                                 
+  Use electrode,          Only : electrode_type
+  Use eqcm,               Only : eqcm_type
+  Use fileset,            Only : file_type,              &
+                                 FILE_INTERCALATION_OX,  &
+                                 FILE_INTERCALATION_RED, &
+                                 FILE_INPUT_STRUCTURE,   &
+                                 FILE_MODEL_SUMMARY,     &
+                                 FILE_OUTPUT_STRUCTURE,  &
+                                 FILE_SELECTED_SOLUTIONS,&
+                                 FILE_SET_EQCM,          &
+                                 FILE_HPC_SETTINGS, &
+                                 FILE_KPOINTS, &
+                                 FILE_RECORD_MODELS,&
+                                 FILE_SET_SIMULATION, &
+                                 FOLDER_ANALYSIS, &
+                                 FOLDER_RESTART,&
+                                 FOLDER_DFT, &
+                                 FOLDER_INPUT_GEOM, &
+                                 FOLDER_MODELS, &
+                                 refresh_out_eqcm
+  Use hpc,                Only : hpc_type, &
+                                 summary_hpc_settings 
+  Use input_types,        Only : in_integer, &
+                                 in_integer_array, & 
+                                 in_logic,   &
+                                 in_string,  &
+                                 in_param,   &
+                                 in_scalar
+  Use numprec,            Only : li, &
+                                 wi, &
+                                 wp
+  Use process_data,       Only : capital_to_lower_case 
+  Use redox,              Only : redox_type
+  Use simulation_output,  Only : summary_simulation_settings,&
+                                 warning_simulation_settings
+  Use simulation_setup,   Only : simul_type
+  Use stoichiometry,      Only : stoich_type
+  Use unit_output,        Only : error_stop,&
                                info 
 
   Implicit None
@@ -480,6 +480,7 @@ Contains
     Integer(Kind=wi)   :: i, ic, jc, kc, record_unit
     Integer(Kind=wi)   :: cycles, legs
     Integer(Kind=wi)   :: fail(1)
+    Logical            :: fortho
     !Time related variables
     Real(Kind=wp)      :: t_ini, t_final
   
@@ -509,7 +510,7 @@ Contains
       Call info(messages, 3)
       ! Define limits
       cycles=redox_data%limit_cycles
-      legs=2
+      legs=redox_data%legs
     End If
 
     ! Refresh out_eqcm
@@ -519,6 +520,14 @@ Contains
     Call read_input_model(files, stoich_data, model_data)
     If (model_data%shift_structure%stat) Then
       Call shift_structure(model_data, process)
+    End If
+    If (simulation_data%solvation%info%stat) Then
+      Call check_orthorhombic_cell(model_data%input%cell, fortho) 
+      If (.Not.fortho) Then
+        Write (message,'(1x,1a)') '***ERROR: computation with implicit solvent is only possible for&
+                                 & orthorhombic cells.'
+        Call error_stop(message)
+      End If        
     End If
     Call check_cell_consistency(model_data)
     Call model_data%species_arrays(stoich_data)  
@@ -2995,8 +3004,9 @@ Contains
     If (T%atoms_per_species/=num_tot) Then
       Write (messages(1),'(2a)') Trim(set_error), ' Problems with the input geometry'
       Write (messages(2),'(a)')  'Possible reasons:' 
-      Write (messages(3),'(a)')          ' 1) wrong input geometry, where atoms are dissociated. If this is the case,&
-                                        & the user must provide a reasonable input model.' 
+      Write (messages(3),'(a)')          ' 1) wrong input geometry, where species are dissociated (e.g. H3O instead of H2O).&
+                                        & If this is the case, the user must provide an input model consistent with the&
+                                        & definition of species.' 
       Write (messages(4),'(a,f4.2,3a)')  ' 2) the value for the bond cutoff (', bond_cutoff, &
                                         & ' Angstrom) as specified for species ',  Trim(T%tag) ,' in  &block_species_components&
                                         & is not sufficient. The user must adjust this value' 
@@ -3223,7 +3233,7 @@ Contains
       Do i = 1, model_data%input%num_atoms
         model_data%input%atom(i)%r(:)=model_data%input%atom(i)%r(:)-shift(:)    
       End Do
-  
+ 
     Else If (Trim(process)=='electrodeposition') Then
       If (Trim(model_data%normal_vector%type)=='c3') Then
         indx=3
@@ -3315,10 +3325,10 @@ Contains
 
     Integer(Kind=wi) :: i, j
     Real(Kind=wp)    :: dist, dist0
-    Logical          :: in_cell, error 
+    Logical          :: changed_geo, error 
 
     Real(Kind=wp)       :: a(3), b(3), r(3)
-    Character(Len=256)  :: messages(2)
+    Character(Len=256)  :: message, messages(2)
     Real(Kind=wp)       :: r0(model_data%input%num_atoms,3)
     
     Do i=1, model_data%input%num_atoms
@@ -3327,34 +3337,43 @@ Contains
 
     error=.False.
 
-    Write (messages(2),'(a)') '***ERROR: Inconsistency found between the atomic coordinates&
+    Write (messages(1),'(a)') '***ERROR: Inconsistency found between the atomic coordinates&
                             & and the simulation cell vectors. Please verify input coordinates and cell'
 
-    ! Move all inside the cell in case the previous shifting has caused problems
+    ! Move all inside the ce
     Do i = 1, model_data%input%num_atoms
       r(:)=model_data%input%atom(i)%r(:)
-      Call check_PBC(r, model_data%input%cell, model_data%input%invcell, 1.0_wp, in_cell)
-      If (in_cell) Then
+      Call check_PBC(r, model_data%input%cell, model_data%input%invcell, 1.0_wp, changed_geo)
+      If (changed_geo) Then
         model_data%input%atom(i)%r(:)=r(:)
       End If
     End Do
-    
+
     ! Try to move atoms again....if any atom is now moved, there is an inconsistency
     ! between the coordinates and the cell 
     Do i =  1, model_data%input%num_atoms
       r(:)=model_data%input%atom(i)%r(:)
-      Call check_PBC(r, model_data%input%cell, model_data%input%invcell, 1.0_wp, in_cell)
-      If (in_cell) Then
-        Write (messages(1),'(a,i4,a)') 'Atom',  i,' does not comply with the crystal symmetry imposed by the&
-                                 & cell vectors.'
-        Call info(messages,1)
+      Call check_PBC(r, model_data%input%cell, model_data%input%invcell, 1.0_wp, changed_geo)
+      If (changed_geo) Then
+        ! Once again. If any atom is now moved, there is an inconsistency
+        Call check_PBC(r, model_data%input%cell, model_data%input%invcell, 1.0_wp, changed_geo)
+      End If  
+      If (changed_geo) Then
+        Write (message,'(a,i4)') '***PROBLEMS with atom',  i
+        Call info(message, 1)
         error=.True.
       End If
     End Do
 
     If (error) Then
-      Call info(messages(2),1)
-      Call error_stop(' ')
+       If (.Not. model_data%shift_structure%stat) Then                 
+         Write (messages(2),'(a)')    '*** The user should try by setting the "shift_structure"&
+                                     & directive to .True.'
+         Call info(messages,2)
+       Else
+         Call info(messages,1)
+       End If
+       Call error_stop(' ')
     End If
 
     Do i = 1, model_data%input%num_atoms-1
@@ -3366,9 +3385,10 @@ Contains
         b(:)=r0(j,:)
         Call compute_distance_PBC(a, b, model_data%input%cell, model_data%input%invcell, dist0)
         If (Abs(dist-dist0)>length_tol) Then
-          Write (messages(1),'(a)') 'ERROR: At least one of the interatomic distances does not comply with&
-                                   & the crystal symmetry imposed by the cell vectors.'
-          Call info(messages,2)
+          Write (message,'(a,2(i7,a))') '***PROBLEMS: Distance between atom ', i, ' and ', j, &
+                                   &' does not comply with the crystal symmetry imposed by the cell vectors.'
+          Call info(message,1)
+          Call info(messages,1)
           Call error_stop(' ')
         End If
       End Do
@@ -3741,7 +3761,8 @@ Contains
                                        & of the Periodic Table. Please use a valid element.'
         Write (messages(2),'(a)')   webpage
         Write (messages(3),'(3a)') 'IMPORTANT: The user should also check for inconsistencies between the list/number of atoms&
-                                & in file ', Trim(input_file),' and the settings in &Block_input_composition. Have you missed info?' 
+                                & in file ', Trim(input_file),' and the settings in &Block_input_composition.&
+                                & Have you missed info?'
         Call info(messages,3)
         Call error_stop(' ')
       End If
@@ -4168,8 +4189,8 @@ Contains
                                & Trim(model_data%input%species(iin)%tag),&
                                &'" from the input coordinates of the input structure.'
       Write (messages(2),'(a)')  'Possible reasons:' 
-      Write (messages(3),'(a)')  ' 1) wrong input geometry, where one(or more) species are dissociated. If this is the case,&
-                                & the user must provide a reasonable input structure.' 
+      Write (messages(3),'(a)')  ' 1) wrong input geometry, where one(or more) species are dissociated (e.g. H3O instead of H2O).&
+                           & If this is the case, the user must provide an input model consistent with the definition of species.'
 
       Write (messages(4),'(a,f4.2,a)')  ' 2) the value for the bond cutoff (', bond_cutoff, &
                                     & ' Angstrom) as specified in &block_species_components&
@@ -4196,8 +4217,8 @@ Contains
     Real(Kind=wp), Intent(  Out) :: dist
 
     Real(Kind=wp) :: Dr_cart(3)
-    Logical       :: modified
-    Integer(Kind=wi) :: ir
+    Logical :: modified
+    Integer :: ir
 
     ! Vector difference
     Do ir=1,3
@@ -4206,13 +4227,12 @@ Contains
 
     ! Find the vector difference for the nearest neighbours (NN)
     Call check_PBC(Dr_cart, cell, invcell, 0.5_wp, modified)
-
     ! Calculate norm
-    dist= norm2(Dr_cart)
+    dist=norm2(Dr_cart)
 
   End Subroutine compute_distance_PBC
 
-  Subroutine check_PBC(v_cart, basis, inv_basis, ratio, in_cell)
+  Subroutine check_PBC(v_cart, basis, inv_basis, ratio, changed_geo)
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     ! Subroutine to compute the components of given vector "v_cart" 
     ! (given in cartesian coordinates of the Euclidean space) in terms of a general
@@ -4226,7 +4246,7 @@ Contains
     ! - ratio=1.0 is used to evaluate if atomic positions lie within the volume 
     !   defined by the basis.
     !
-    ! Logical variable "in_cell" is used to check is the vector has been modified 
+    ! Logical variable "changed_geo" is used to check is the vector has been modified 
     !
     ! author    - i.scivetti Jan 2021
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -4235,12 +4255,13 @@ Contains
     Real(Kind=wp), Intent(In   ) :: basis(3,3)
     Real(Kind=wp), Intent(In   ) :: inv_basis(3,3)
     Real(Kind=wp), Intent(In   ) :: ratio 
-    Logical,       Intent(  Out) :: in_cell                     
+    Logical,       Intent(  Out) :: changed_geo                     
 
     Real(Kind=wp) :: v_direct(3), limit1, limit2
-    Integer(Kind=wi) :: ir
+    Integer(Kind=wi) :: ir, i
+    Logical          :: flag
 
-    in_cell=.False.
+    changed_geo=.False.
  
     If (Abs(ratio-0.5_wp) < epsilon(ratio)) Then
       limit1=ratio
@@ -4252,19 +4273,54 @@ Contains
 
     ! Express vector difference in terms of the cell vectors
     v_direct= MatMul(v_cart, inv_basis)
+
     ! PCB effect
-    Do ir = 1,3
-      If (v_direct(ir) > limit1) Then
-         v_cart(:)= v_cart(:) - basis(ir,:)
-         in_cell=.True.
-      Else If (v_direct(ir) < limit2) Then
-         v_cart(:)= v_cart(:) + basis(ir,:)
-         in_cell=.True.
-      End If
+    i=1
+    flag=.True.
+    Do While (i < 4 .And. flag)
+      Do ir = 1, 3
+        If (v_direct(ir) > limit1) Then
+           v_cart(:)= v_cart(:) - basis(ir,:)
+           changed_geo=.True.
+        Else If (v_direct(ir) < limit2) Then
+           v_cart(:)= v_cart(:) + basis(ir,:)
+           changed_geo=.True.
+        End If
+        If (changed_geo) Then
+          v_direct= MatMul(v_cart, inv_basis)
+        End If
+      End Do
+      If (.Not. changed_geo) Then
+        flag=.False.      
+      End If        
+      i=i+1
     End Do
 
-  End Subroutine 
+  End Subroutine check_PBC 
 
+  Subroutine check_orthorhombic_cell(A, flag)
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    ! Subroutine to check if the simulation cell 'A' is orthorhombic or not. 
+    ! vectors. If A is not orthorhombic, flag will be set to False
+    !
+    ! author    - i.scivetti Aug 2022
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    Real(Kind=wp), Intent(In   )  :: A(3,3)
+    Logical,       Intent(  Out)  :: flag
+   
+    Integer(Kind=wi) :: i, j
+
+    i=1
+    flag=.True.
+    Do i = 1, 2
+     Do j = i+1, 3
+       If (Abs(Dot_product(A(i,:), A(j,:)))>epsilon(1.0_wp)) Then
+         flag=.False.      
+       End If        
+     End Do
+    End Do 
+
+  End Subroutine check_orthorhombic_cell
 
   Subroutine about_cell(A,invA,length)
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

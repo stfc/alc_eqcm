@@ -16,8 +16,8 @@ Module constants
 
   ! Code reference 
   Character(Len=16), Parameter, Public  :: code_name    = "ALC_EQCM" 
-  Character(Len=16), Parameter, Public  :: code_VERSION = "1.0.1"
-  Character(Len=16), Parameter, Public  :: date_RELEASE = "Sep 2022"
+  Character(Len=16), Parameter, Public  :: code_VERSION = "1.1.1"
+  Character(Len=16), Parameter, Public  :: date_RELEASE = "Nov 2022"
 
   ! FIXED PARAMETERS
   Real(Kind=wp), Parameter, Public  :: pi    = 3.14159265358979312e0_wp 

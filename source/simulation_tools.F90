@@ -1,397 +1,159 @@
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-! Module that defines simulation type and required subroutines to
-! process data and build input files for simulation. This module supports
-! simulation_setup.  
+! Module with subroutines tools for simulation
 !
 ! Copyright - 2022 Ada Lovelace Centre (ALC)
 !             Scientific Computing Department (SCD)
 !             The Science and Technology Facilities Council (STFC)
 !
-! Author    - i.scivetti Oct 2021
+!
+! Author        - i.scivetti April-Oct 2021
+! Refactoring   - i.scivetti Oct       2021
+! Refactoring   - i.scivetti Sep       2022
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 Module simulation_tools
 
   Use constants,        Only : max_components
-  Use input_types,      Only : in_integer, &
-                               in_integer_array,&
-                               in_logic,   &
-                               in_string,  &
-                               in_param,   &
-                               in_param_array, &
-                               in_scalar
+
   Use numprec,          Only : wi, &
                                wp
-  Use stoichiometry,    Only : stoich_type
+
   Use process_data,     Only : capital_to_lower_case, &
                                remove_symbols  
+                             
+  Use references,       Only : bib_ca, bib_hl, bib_pz, bib_wigner, &
+                               bib_vwn, bib_pade, bib_pw92, bib_pw91, bib_am05, bib_pbe, bib_rp, bib_revpbe, &
+                               bib_pbesol, bib_blyp, bib_wc, bib_xlyp, bib_scan, bib_rpw86pbe, &
+                               bib_g06, bib_obs, bib_jchs, bib_dftd2, bib_dftd3, bib_dftd3bj, bib_ts, bib_tsh, bib_mbd,&
+                               bib_ddsc, bib_vdwdf, bib_optpbe, bib_optb88, bib_optb86b, bib_vdwdf2, bib_vdwdf2b86r,&
+                               bib_SCANrVV10, bib_VV10, bib_AVV10S, bib_tunega, bib_rpw86, bib_fisher, web_d3bJ, &
+                               web_d3bJ, web_vasp, web_onetep, web_castep, web_cp2k
+                             
+  Use simulation_setup, Only:  type_extra, &
+                               type_ref_data                             
   Use unit_output,      Only : error_stop,&
                                info 
 
-  Implicit None
-  Private
-
-  ! Maximum directives for simulations
-  Integer(Kind=wi), Parameter, Public  :: max_directives=100 
   ! Error in the initialization of magnetization                            
   Real(Kind=wp), Parameter, Public :: error_mag = 0.00001_wp
+                               
+  Public ::  obtain_xc_reference, obtain_vdw_reference
+  Public ::  check_extra_directives, check_settings_set_extra_directives, extra_directive_setting
+  Public ::  check_settings_single_extra_directive
+  Public ::  scan_extra_directive, print_extra_directives
+  Public ::  print_warnings
+  Public ::  set_reference_database
+  Public ::  record_directive 
+  Public ::  check_initial_magnetization
 
-  ! Components inherited from model_data
-  Type :: component_in_block
-    Character(Len=8) :: tag
-    Character(Len=2) :: element
-    Integer(Kind=wi) :: atomic_number
-    Real(Kind=wp)    :: valence_electrons
-  End Type component_in_block
-
-  ! NGWF type 
-  Type :: type_ngwf
-    Character(Len=8) :: tag
-    Character(Len=2) :: element
-    Integer(Kind=wi) :: ni
-    Real(Kind=wp)    :: radius
-  End Type type_ngwf
-
-  ! Type for pseudopotentials 
-  Type :: type_pseudo
-    Character(Len=256) :: file_name
-    Character(Len=256) :: potential 
-    Character(Len=8)   :: tag
-    Character(Len=2)   :: element
-  End Type type_pseudo
-
-  ! Type for extra directives 
-  Type, Public :: type_extra 
-    Character(Len=256) :: array(max_directives)
-    Character(Len=256) :: key(max_directives)
-    Character(Len=256) :: set(max_directives)
-    Integer(Kind=wi)   :: N0
-  End Type type_extra
-
-  ! type for reference data
-  Type, Public :: type_ref_data
-    Character(Len=256) :: key
-    Character(Len=16)  :: keytype
-    Character(Len=256) :: msn
-    Character(Len=256) :: set_default
-    Character(Len=16)  :: units
-    Integer(Kind=wi)   :: N0
-  End Type type_ref_data
-
-  ! Type for basis_set
-  Type :: type_basis
-    Character(Len=8)   :: tag
-    Character(Len=2)   :: element
-    Character(Len=256) :: basis
-    Character(Len=256) :: type
-  End Type type_basis
-
-  ! Type for magnetization
-  Type :: type_mag
-    Character(Len=8)  :: tag
-    Character(Len=2)  :: element
-    Real(Kind=wp)     :: value
-  End Type type_mag
-
-  ! Type for Hubbard corrections 
-  Type :: type_hubbard
-    Character(Len=8)  :: tag
-    Character(Len=2)  :: element
-    Integer(Kind=wi)  :: l_orbital  
-    Real(Kind=wp)     :: U 
-    Real(Kind=wp)     :: J 
-  End Type type_hubbard
-
-  ! Type for masses
-  Type :: type_mass
-    Character(Len=8)  :: tag
-    Character(Len=2)  :: element
-    Real(Kind=wp)     :: value
-  End Type type_mass
-
-  ! Type for GC-DFT
-  Type :: type_gcdft 
-    Type(in_logic)  ::  activate     
-    Type(in_param)  ::  reference_potential    
-    Type(in_param)  ::  electrode_potential
-    Type(in_scalar) ::  electron_threshold    
-  End Type
- 
-  ! Type for DFT settings
-  Type :: dft_type
-    ! Flag to ensure DFT block is not defined more than once 
-    Logical  :: generate=.False.
-    ! Type XC functional
-    Type(in_string)  :: xc_level     
-    ! Type XC version 
-    Type(in_string)  :: xc_version     
-    ! Staring XC base approach 
-    Character(Len=256) :: xc_base
-    ! XC reference
-    Character(Len=256) :: xc_ref
-    ! vdW
-    Type(in_string)    :: vdw   
-    ! vdW reference
-    Character(Len=256) :: vdw_ref
-    ! vdW kernel
-    Logical            :: need_vdw_kernel 
-    Character(Len=256) :: vdw_kernel_file
-    ! Flag to set spin polarised simulation 
-    Type(in_logic)  :: spin_polarised
-    ! Energy cutoff
-    Type(in_param)  :: encut
-    ! Precision
-    Type(in_string) :: precision   
-    ! Smearing
-    Type(in_string) :: smear
-    ! Width for smearing
-    Type(in_param)  :: width_smear
-    ! Mixing 
-    Type(in_string) :: mixing
-    ! SFC steps
-    Type(in_integer) :: scf_steps
-    ! Energy convergence
-    Type(in_param)   :: delta_e
-    ! k-point sampling
-    Integer(Kind=wi)       :: total_kpoints 
-    Type(in_integer_array) :: kpoints
-    ! basis set
-    Type(in_logic)   :: basis_info 
-    Type(type_basis), Allocatable :: basis_set(:)
-    ! pseudo-potentials
-    Type(in_logic)   :: pp_info 
-    Type(type_pseudo), Allocatable :: pseudo_pot(:)
-    ! Maximum l_orbital
-    Type(in_integer) :: max_l_orbital
-    ! Total magnetization 
-    Type(in_param)   :: total_magnetization 
-    ! magnetization
-    Type(in_logic)   :: mag_info 
-    Type(type_mag),  Allocatable :: magnetization(:)
-    ! hubbard
-    Type(in_logic)   :: hubbard_info
-    Logical          :: hubbard_all_U_zero
-    Type(type_hubbard),  Allocatable :: hubbard(:)
-    ! Orbital Transformation (OT), only valid for CP2K
-    Type(in_logic)   :: ot
-    ! Ensemble DFT (EDFT), only valid for CASTEP and ONETEP
-    Type(in_logic)   :: edft 
-
-    ! GC-DFT
-    Type(type_gcdft) :: gc
-
-    ! Bands paralellization, only for VASP
-    Type(in_integer) :: npar
-    ! kpoints paralellization, only for VASP
-    Type(in_integer) :: kpar
-    ! Bands
-    Type(in_integer) :: bands
-    ! NGWF, compulsory only for ONETEP
-    Type(in_logic)   :: ngwf_info
-    Type(type_ngwf),  Allocatable  :: ngwf(:)
-    ! PAW for onetep
-    Logical :: onetep_paw
-    
-  End Type
-
-  ! Type for motion settings
-  !!!!!!!!!!!!!!!!!!!!!!!!!!
-  Type :: motion_type
-    ! Flag to ensure motion block is not defined more than once 
-    Logical  :: generate=.False.
-    ! Relaxation method 
-    Type(in_string) :: relax_method
-    ! force convergence
-    Type(in_param_array) :: delta_f
-    ! Time step
-    Type(in_param) :: timestep
-    ! Number of ionic step, either for relaxation or MD
-    Type(in_integer) :: ion_steps
-    ! Change simulation cell volume
-    Type(in_logic)  :: change_cell_volume
-    ! Change simulation cell shape 
-    Type(in_logic)  :: change_cell_shape
-    ! Ensemble 
-    Type(in_string) :: ensemble
-    ! Temperature 
-    Type(in_param)  :: temperature 
-    ! Pressure 
-    Type(in_param)  :: pressure 
-    ! Thermostat 
-    Type(in_string) :: thermostat
-    ! Thermostat relaxation time 
-    Type(in_param)  :: relax_time_thermostat 
-    ! Barostat 
-    Type(in_string) :: barostat
-    ! Barostat relaxation time 
-    Type(in_param)  :: relax_time_barostat 
-    ! Masses 
-    Type(in_logic)   :: mass_info
-    Type(type_mass), Allocatable :: mass(:) 
-  End Type
-
-  ! Type for the modelling related variables 
-  Type, Public :: simul_type
-    Private
-    ! General
-    !!!!!!!!!
-    ! Flag to generate simulation files
-    Logical, Public  :: generate=.False.
-    ! Details for the components
-    Type(component_in_block), Public :: component(max_components)
-    !number of total tags
-    Integer(Kind=wi),   Public  :: total_tags
-    ! Code 
-    Character(Len=256), Public  :: code_format
-    ! Code version 
-    Character(Len=256), Public  :: code_version
-    ! physical process 
-    Character(Len=256), Public  :: process
-    ! vector normal to the surface 
-    Character(Len=256), Public  :: normal_vector
-    ! Simulation cell
-    Real(Kind=wp),      Public  :: cell(3,3)
-    ! Length of cell vectors
-    Real(Kind=wp),      Public  :: cell_length(3)
-    ! Large cell
-    Logical,            Public  :: large_cell
-
-    ! Specific variables 
-    !!!!!!!!!!!!!!!!!!!!
-    ! Type of the simulation to be performed
-    Type(in_string), Public :: simulation     
-    ! Level of theory 
-    Type(in_string), Public :: theory_level
-    ! Total charge
-    Type(in_scalar), Public :: net_charge
-    ! DFT directives
-    Type(dft_type),    Public :: dft 
-    ! Ions related variables
-    Type(motion_type), Public :: motion
-    ! Extra directives
-    Type(in_logic),    Public :: extra_info
-    Type(type_extra),  Public :: extra_directives
-    ! Set directives
-    Type(type_extra),  Public :: set_directives
-
-  Contains
-    Private
-    Procedure, Public  :: init_input_dft_variables    =>  allocate_input_dft_variables
-    Procedure, Public  :: init_input_motion_variables =>  allocate_input_motion_variables
-    Final              :: cleanup
-
-  End Type simul_type
-
-  Public :: check_extra_directives, record_directive, scan_extra_directive
-  Public :: check_settings_single_extra_directive, check_settings_set_extra_directives
-  Public :: set_reference_database
-  Public :: check_initial_magnetization
-  Public :: print_warnings
-  
 Contains
 
-  Subroutine allocate_input_dft_variables(T)
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    ! Allocate essential DFT variables to build input files for simulations 
+  Subroutine obtain_xc_reference(xc_version, xc_reference)
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    ! Subroutine to obtain the reference for the XC functional 
     !
-    ! author    - i.scivetti April-June 2021
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    Class(simul_type), Intent(InOut)  :: T
+    ! author    - i.scivetti July 2021
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    Character(Len=*), Intent(In   ) :: xc_version
+    Character(Len=*), Intent(  Out) :: xc_reference
 
-    Integer(Kind=wi)    :: fail(6)
-    Character(Len=256)  :: message
-
-    Allocate(T%dft%pseudo_pot(T%total_tags),     Stat=fail(1))
-    Allocate(T%dft%magnetization(T%total_tags),  Stat=fail(2))
-    Allocate(T%dft%hubbard(T%total_tags),        Stat=fail(3))
-    Allocate(T%dft%basis_set(T%total_tags),      Stat=fail(4))
-    Allocate(T%dft%kpoints%value(3),             Stat=fail(5))
-    Allocate(T%dft%ngwf(T%total_tags),           Stat=fail(6))
-
-    If (Any(fail > 0)) Then
-      Write (message,'(1x,1a)') '***ERROR: Allocation problems of "DFT" variables to build input files&
-                               & for simulations'
-      Call error_stop(message)
+    If (Trim(xc_version)     == 'ca'    ) Then 
+      xc_reference= 'Ceperley-Alder (CA) '//Trim(bib_ca)
+    Else If (Trim(xc_version) == 'hl'    ) Then
+      xc_reference= 'Hedin-Lundqvist (HL)'//Trim(bib_hl)       
+    Else If (Trim(xc_version) == 'pz'    ) Then
+      xc_reference='Perdew-Zunger (PZ) '//Trim(bib_pz)       
+    Else If (Trim(xc_version) == 'wigner') Then
+      xc_reference= 'Wigner '//Trim(bib_wigner)       
+    Else If (Trim(xc_version) == 'vwn'   ) Then
+      xc_reference= 'Vosko-Wilk-Nusair (VWN) '//Trim(bib_vwn)       
+    Else If (Trim(xc_version) == 'pade'  ) Then
+      xc_reference= 'PADE '// Trim(bib_pade)       
+    Else If (Trim(xc_version) == 'am05'  ) Then
+      xc_reference= 'Armiento-Mattsson (AM05) '//Trim(bib_am05)       
+    Else If (Trim(xc_version) == 'pw91'  ) Then
+      xc_reference= 'Perdew-Wang 91 (PW91)'//Trim(bib_pw91)       
+    Else If (Trim(xc_version) == 'pw92'  ) Then
+      xc_reference= 'Perdew-Wang 92 (PW92) '//Trim(bib_pw92)       
+    Else If (Trim(xc_version) == 'pbe'   ) Then
+      xc_reference= 'Perdew-Burke-Ernzerhof (PBE) '//Trim(bib_pbe)       
+    Else If (Trim(xc_version) == 'rp'    ) Then
+      xc_reference= 'Hammer-Hansen-Norskov (RP/RPBE) '//Trim(bib_rp)       
+    Else If (Trim(xc_version) == 'revpbe') Then
+      xc_reference= 'revPBE '//Trim(bib_revpbe)       
+    Else If (Trim(xc_version) == 'pbesol') Then
+      xc_reference= 'PBE for solids (PBEsol) '//Trim(bib_pbesol)       
+    Else If (Trim(xc_version) == 'wc'    ) Then
+      xc_reference= 'Wu-Cohen (WC) '//Trim(bib_wc)       
+    Else If (Trim(xc_version) == 'blyp'  ) Then
+      xc_reference= 'Becke-Lee-Young-Parr (BLYP) '//Trim(bib_blyp)       
+    Else If (Trim(xc_version) == 'xlyp'  ) Then
+      xc_reference= 'Xu-Goddard (XLYP) '//Trim(bib_xlyp)       
+    Else If (Trim(xc_version) == 'or'  ) Then
+      xc_reference= 'XC term of the optPBE functional'
+    Else If (Trim(xc_version) == 'bo'  ) Then
+      xc_reference= 'XC term of the optB88 functional'
+    Else If (Trim(xc_version) == 'mk'  ) Then
+      xc_reference= 'XC term of the optb86b functional'
+    Else If (Trim(xc_version) == 'ml'  ) Then
+      xc_reference= 'XC term of the vdW-DF2-b86r functional'
+    Else If (Trim(xc_version) == 'scan'  ) Then
+      xc_reference= 'meta-GGA functional (SCAN) '//Trim(bib_scan)
+    Else If (Trim(xc_version) == 'rpw86pbe'  ) Then
+      xc_reference= 'rPW86PBE functional '//Trim(bib_rpw86pbe)
     End If
+ 
+  End Subroutine obtain_xc_reference
 
-    !Set to False just in case
-    T%dft%basis_info%stat=.False. 
-    T%dft%pp_info%stat=.False. 
-    T%dft%mag_info%stat=.False.
-    T%dft%hubbard_info%stat=.False.
-    T%dft%ngwf_info%stat=.False.
-
-  End Subroutine allocate_input_dft_variables
-
-  Subroutine allocate_input_motion_variables(T)
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    ! Allocate essential motion variables to build input files for simulations 
+  Subroutine obtain_vdw_reference(vdw_type, vdw_reference)
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    ! Subroutine to obtain the refrrence for the selected vdW correction 
     !
-    ! author    - i.scivetti April-June 2021
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    Class(simul_type), Intent(InOut)  :: T
+    ! author    - i.scivetti July 2021
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    Character(Len=*), Intent(In   ) :: vdw_type
+    Character(Len=*), Intent(  Out) :: vdw_reference
 
-    Integer(Kind=wi)    :: fail(3)
-    Character(Len=256)  :: message
-
-    Allocate(T%motion%delta_f%value(1),               Stat=fail(1))
-    Allocate(T%motion%delta_f%units(2),               Stat=fail(2))
-    Allocate(T%motion%mass(T%total_tags),             Stat=fail(3))  
-
-    If (Any(fail > 0)) Then
-      Write (message,'(1x,1a)') '***ERROR: Allocation problems of "motion" variables to build input files&
-                               & for simulations'
-      Call error_stop(message)
+    If (Trim(vdw_type)      == 'dft-d2'      ) Then
+      vdw_reference = 'Grimme DFT-D2 '//Trim(bib_dftd2) 
+    Else If (Trim(vdw_type)  == 'g06'         ) Then
+      vdw_reference = 'Grimme 2006 (g06) '//Trim(bib_g06)
+    Else If (Trim(vdw_type)  == 'obs'         ) Then
+      vdw_reference = 'Ortmann-Bechstedt-Schmidt (OBS) '//Trim(bib_obs)
+    Else If (Trim(vdw_type)  == 'jchs'        ) Then
+      vdw_reference = 'Jurecka-Cerny-Hobza-Salahub (JCHS) '//Trim(bib_jchs)
+    Else If (Trim(vdw_type)  == 'dft-d3'      ) Then
+      vdw_reference = 'Grimme DFT-D3 with no damping '//Trim(bib_dftd3)
+    Else If (Trim(vdw_type)  == 'dft-d3-bj'   ) Then
+      vdw_reference = 'Grimme D3 with Becke-Jonson damping (DTF-D3-BJ) '//Trim(bib_dftd3bj)
+    Else If (Trim(vdw_type)  == 'ts'          ) Then
+      vdw_reference = 'Tkatchenko-Scheffler (TS) method '//Trim(bib_ts)
+    Else If (Trim(vdw_type)  == 'tsh'         ) Then
+      vdw_reference = 'Tkatchenko-Scheffler method with Hirshfeld partitioning (TSH) '//Trim(bib_tsh)
+    Else If (Trim(vdw_type)  == 'mbd'         ) Then
+      vdw_reference = 'Many-body dispersion energy method '//Trim(bib_mbd)
+    Else If (Trim(vdw_type)  == 'ddsc'        ) Then
+      vdw_reference = 'DFT-DDsC '//Trim(bib_ddsc)
+    Else If (Trim(vdw_type)  == 'vdw-df'      ) Then
+      vdw_reference = 'non-local vdW-DF method '//Trim(bib_vdwdf)
+    Else If (Trim(vdw_type)  == 'optpbe'      ) Then
+      vdw_reference = 'non-local optPBE method '//Trim(bib_optpbe)
+    Else If (Trim(vdw_type)  == 'optb88'      ) Then
+      vdw_reference = 'non-local optB88 method '//Trim(bib_optb88)
+    Else If (Trim(vdw_type)  == 'optb86b'     ) Then
+      vdw_reference = 'non-local optB86b method '//Trim(bib_optb86b) 
+    Else If (Trim(vdw_type)  == 'vdw-df2'     ) Then
+      vdw_reference = 'non-local vdW-DF2 method '//Trim(bib_vdwdf2)
+    Else If (Trim(vdw_type)  == 'vdw-df2-b86r') Then
+      vdw_reference = 'non-local vdW-DF2-B86R method '//Trim(bib_vdwdf2b86r)
+    Else If (Trim(vdw_type)  == 'scan+rvv10'  ) Then
+      vdw_reference = 'non-local SCAN+rVV10 method '//Trim(bib_scanrvv10)
+    Else If (Trim(vdw_type)  == 'avv10s'      ) Then
+      vdw_reference = 'non-local VV10 method '//Trim(bib_vv10)
+    Else If (Trim(vdw_type)  == 'vv10'        ) Then
+      vdw_reference = 'non-local AVV10S method '//Trim(bib_AVV10s)
     End If
 
-    !Set to False just in case
-    T%motion%mass_info%stat=.False.
-
-  End Subroutine allocate_input_motion_variables
-
-
-  Subroutine cleanup(T)
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    ! Deallocate variables
-    !
-    ! author    - i.scivetti April 2021
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    Type(simul_type) :: T
-
-    If (Allocated(T%motion%delta_f%units)) Then
-      Deallocate(T%motion%delta_f%units)
-    End If
-
-    If (Allocated(T%motion%delta_f%value)) Then
-      Deallocate(T%motion%delta_f%value)
-    End If
-
-    If (Allocated(T%motion%mass)) Then
-      Deallocate(T%motion%mass)
-    End If
-
-
-    If (Allocated(T%dft%kpoints%value)) Then
-      Deallocate(T%dft%kpoints%value)
-    End If
-
-    If (Allocated(T%dft%pseudo_pot)) Then
-      Deallocate(T%dft%pseudo_pot)
-    End If
-
-    If (Allocated(T%dft%hubbard)) Then
-      Deallocate(T%dft%hubbard)
-    End If
-
-    If (Allocated(T%dft%basis_set)) Then
-      Deallocate(T%dft%basis_set)
-    End If
-
-    If (Allocated(T%dft%ngwf)) Then
-      Deallocate(T%dft%ngwf)
-    End If
-
-  End Subroutine cleanup
-
+  End Subroutine obtain_vdw_reference
 
   Subroutine check_extra_directives(sentence, key, set, symbol, code)
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -479,128 +241,13 @@ Contains
     End If
 
   End Subroutine check_extra_directives  
-
-  Subroutine record_directive(iunit, message, tag, name_dir, ic) 
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    ! Subroutine to print and keep record of the directives for the
-    ! atomisitc simulations 
-    ! 
-    ! author    - i.scivetti July 2021
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    Integer(Kind=wi), Intent(In   ) :: iunit 
-    Character(Len=*), Intent(In   ) :: message  
-    Character(Len=*), Intent(In   ) :: tag      
-    Character(Len=*), Intent(  Out) :: name_dir
-    Integer(Kind=wi), Intent(InOut) :: ic
-
-    Write(iunit, '(a)') Trim(message)
-    name_dir= Trim(tag)
-    ic=ic+1
-
-  End Subroutine record_directive
-
-  Subroutine scan_extra_directive(sentence, set_directives, found)
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    ! Subroutine to scan the directives defined in block &extra_directives against
-    ! the directives set from the definitions of &block_simulation_settings 
-    ! 
-    ! author        - i.scivetti July 2021
-    ! modification  - i.scivetti Aug  2022 
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    Character(Len=*), Intent(In   ) :: sentence 
-    Type(type_extra), Intent(In   ) :: set_directives
-    Logical,          Intent(InOut) :: found
-   
-    Character(Len=256) :: word
-    Integer(Kind=wi)   :: j
-
-    j=1
-    Do While (j <= set_directives%N0 .And. (.Not. found))
-      word=set_directives%array(j)
-      Call capital_to_lower_case(word)
-      If (Trim(sentence) == Trim(word)) Then 
-        found=.True.
-      End If
-      j=j+1
-    End Do
-
-  End Subroutine scan_extra_directive
-
-  Subroutine check_initial_magnetization(net_elements, list_tag, N0, mag_ini, target_mag)
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    ! Subroutine to print the initial magnetic moments of the resulting models. 
-    ! This subroutine is only invoked if there are differences between the assigned
-    ! total magnetization and the initial magnetization of the generated model
-    ! 
-    ! author    - i.scivetti May-July 2021
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    Integer(Kind=wi),  Intent(In   ) :: net_elements
-    Character(Len=8),  Intent(In   ) :: list_tag(max_components) 
-    Integer(Kind=wi),  Intent(In   ) :: N0(net_elements)
-    Real(Kind=wp),     Intent(In   ) :: mag_ini(max_components)
-    Real(Kind=wp),     Intent(In   ) :: target_mag
-
-    Real(Kind=wp)      :: tot_mag
-    Character(Len=256) :: message
-    Character(Len=256) :: messages(3)
-    Integer(Kind=wi) :: i
-  
-    tot_mag=0.0_wp
-    Do i=1, net_elements
-      tot_mag=tot_mag+mag_ini(i)*N0(i)
-    End Do
  
-    If (Abs(tot_mag-target_mag) > error_mag) Then
-      Call info(' ', 1)
-      Call info(' Summary of the total amount and initial magnetic moment of species', 1)
-      Call info(' -------------------------------------------------', 1)
-      Write (message, '(1x,a,2(6x,a))') 'Tag', 'Amount', 'Initial magnetic moment/spin'
-      Call info(message, 1)
-      Call info(' -------------------------------------------------', 1)
-      Do i=1, net_elements
-        Write (message, '(1x,a,2x,i5,f10.2)') list_tag(i), N0(i), mag_ini(i) 
-        Call info(message, 1)    
-      End Do
-      Call info(' -------------------------------------------------', 1)
-      Write (messages(1),'(1x,a,f10.2)') 'Total initial magnetic moment/spin: ', tot_mag
-      Write (messages(2),'(1x,a,f10.2,a)') 'Targeted magnetic moment/spin:      ',&
-                                     & target_mag,&
-                                     & ' (from the value of "total_magnetization")' 
-      Write (messages(3),'(1x,a)') '***ERROR: "total_magnetization" must be&
-                                   & equal to the total initial magnetization (or viceversa). Please change the&
-                                   & value of "total_magnetization" (or values in sub-block &magnetization).&
-                                   & If problems persist, remove "total_magnetization".'
-      Call info(messages, 3)
-      Call error_stop(' ')
-    End If
-
-  End Subroutine check_initial_magnetization
-
-  Subroutine print_warnings(header, print_header, message, dim)
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    ! Auxiliary subroutine to print warning headers 
-    !
-    ! author    - i.scivetti May 2021
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    Character(Len=256), Intent(In   ) :: header
-    Logical,            Intent(InOut) :: print_header
-    Character(Len=256), Intent(In   ) :: message(*) 
-    Integer(Kind=wi),   Intent(In   ) :: dim     
-
-    If (print_header) Then
-      Call info(header,1)
-      print_header=.False.
-    End If
-    Call info(message,dim)
-
-  End Subroutine print_warnings
-
   Subroutine check_settings_set_extra_directives(ref_data, num_ref_data, extra_directives, exception_keys, &
-                                          & number_exceptions, extradir_header)
+                                               & number_exceptions, extradir_header)
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     ! Check if reference extra directives (ref_data) are defined or not within the
     ! &extra_directives block. If defined, check if the definition is correct.
-    ! If there are not defined, print a message advising the user to consider
+    ! If there are not defined, print a message advising the user to consider for 
     ! the directive. Number_exceptions is the number of keywords that will not 
     ! be checked, and these keyword are defined in exception_keys
     !
@@ -661,6 +308,66 @@ Contains
 
   End Subroutine check_settings_set_extra_directives
 
+  Subroutine extra_directive_setting(ref_data, set, found, print_msn, msn, condition)
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    ! Check what to print or not for a given directive, with name ref_data%key  
+    !
+    ! author    - i.scivetti August 2022
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+    Type(type_ref_data), Intent(In   ) :: ref_data
+    Character(Len=*),    Intent(In   ) :: set
+    Logical,             Intent(In   ) :: found
+    Logical,             Intent(  Out) :: print_msn
+    Character(Len=*),    Intent(  Out) :: msn
+    Character(Len=*),  Optional,  Intent(In   ) :: condition
+
+    Integer(Kind=wi)    :: extra_int, io
+    Logical             :: extra_logic    
+    Real(Kind=wp)       :: extra_real
+    Character(Len=256)  :: action_dir
+
+    print_msn=.False.
+
+    If (Present(condition))then
+      action_dir='complain'
+    Else
+      action_dir='allow'
+    End If    
+ 
+    If (found) Then
+      If (Trim(ref_data%keytype) == 'integer') Then 
+        Read(set, Fmt=*, iostat=io) extra_int
+      Else If (Trim(ref_data%keytype) == 'logical') Then
+        Read(set, Fmt=*, iostat=io) extra_logic
+      Else If (Trim(ref_data%keytype) == 'real') Then
+        Read(set, Fmt=*, iostat=io) extra_real
+      End If
+      If (io/=0) Then
+        print_msn=.True.
+        Write (msn, '(1x,5a)') '  *** PROBLEMS *** keyword "', Trim(ref_data%key),&
+                                  & '" (defined in &extra_direcitves) must be ', Trim(ref_data%keytype),&
+                                  & '. PLEASE FIX THIS KEYWORD. To keep the already generated models,&
+                                  & change the "analysis" directive to "hpc_simulation_files" and rerun.'
+      End If
+      If (Trim(action_dir) == 'complain') Then
+        print_msn=.True.
+        Write (msn, '(1x,5a)') '  *** PROBLEMS *** keyword "', Trim(ref_data%key), '" (defined in&
+                                  & &extra_direcitves) is not compatible with the option of "', Trim(condition),&
+                                  & '". PLEASE FIX. To keep the already generated models,&
+                                  & use the "hpc_simulation_files" option for "analysis" and rerun.'
+      End If
+    Else
+      If (Trim(action_dir) == 'allow') Then
+        print_msn=.True.
+        Write (msn, '(1x,5a,1x,a)') '  * ', Trim(ref_data%key), Trim(ref_data%msn),&
+                               & ' Default is ', Trim(ref_data%set_default), Trim(ref_data%units)
+      End If
+    End If
+
+  End Subroutine extra_directive_setting
+  
+
   Subroutine check_settings_single_extra_directive(single_dir, ref_data, num_ref_data, extra_directives,&
                                                  & extradir_header, condition)
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -718,67 +425,178 @@ Contains
 
   End Subroutine check_settings_single_extra_directive
 
-
-  Subroutine extra_directive_setting(ref_data, set, found, print_msn, msn, condition)
+  Subroutine print_extra_directives(iunit, extra_directives, set_directives, code, simul_type)
+    Integer(Kind=wi),    Intent(In   ) :: iunit
+    Type(type_extra),    Intent(In   ) :: extra_directives
+    Type(type_extra),    Intent(InOut) :: set_directives          
+    Character(Len=*),    Intent(In   ) :: code
+    Character(Len=*),    Intent(In   ) :: simul_type
+  
+    Character(Len=256)  :: messages(10)
+    Integer(Kind=wi)    :: i
+    Logical :: found
+    
+    found=.False.
+  
+     Write (iunit,'(a)') ' '
+     Write (iunit,'(a)') '##### Extra directives'
+     Write (iunit,'(a)') '#====================='
+     Do i=1, extra_directives%N0
+       Write (iunit,'(a)') Trim(Adjustl(extra_directives%array(i)))
+       If (Index(Trim(Adjustl(extra_directives%array(i))), '#') /= 1 ) Then
+         If (Trim(code)=='onetep') Then
+           If (Trim(extra_directives%key(i)) =='&block'     .And. &
+              Trim(extra_directives%set(i)) =='thermostat') Then
+             If (Trim(simul_type) == 'md') Then
+               Write (messages(1), '(1x,a)') '***ERROR in sub-block &extra_directives: "&block thermostat" CANNOT be defined as&
+                                      & part of &extra_directives. Please remove it.'
+               Call info(messages, 1)                         
+               Call error_stop(' ')                         
+             End If  
+           End If
+         End If
+         Call scan_extra_directive(extra_directives%key(i), set_directives, found)
+         If (found)Then
+           Call info(' ', 1)
+           Write (messages(1), '(1x,a)')  '*************************************************************************************'
+           Write (messages(2), '(1x,a)')  '** WARNING  WARNING  WARNING  WARNING  WARNING  WARNING  WARNING  WARNING  WARNING **'
+           Write (messages(3), '(1x,a)')  '*************************************************************************************'
+           Write (messages(4), '(1x,3a)') '  PROBLEMS in sub-bock &extra_directives: directive "', &
+                                          & Trim(extra_directives%key(i)), '" has already'
+           Write (messages(5), '(1x, a)') '  been set from the definition of ALC_EQCM directives. The user must review the'
+           Write (messages(6), '(1x, a)') '  settings of &extra_directives. THERE MUST NOT BE DUPLICATION OF DIRECTIVES.' 
+           Write (messages(7), '(1x,3a)') '  To keep the already generated models, remove "', &
+                                         Trim(extra_directives%key(i)), '" from the &extra_directives' 
+           Write (messages(8), '(1x, a)') '  sub-block, change the "analysis" directive to "hpc_simulation_files" and rerun.'
+           Write (messages(9), '(1x, a)') '*************************************************************************************'
+           Write (messages(10), '(1x,a)') '*************************************************************************************'
+           Call info(messages, 10)
+           Call info(' ', 1)
+         End If
+         set_directives%N0=set_directives%N0+1
+         set_directives%array(set_directives%N0)=Trim(extra_directives%key(i))
+       End If
+     End Do
+     
+  End Subroutine print_extra_directives 
+  
+  Subroutine scan_extra_directive(sentence, set_directives, found)
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    ! Subroutine to scan the directives defined in block &extra_directives against
+    ! the directives set from the definitions of &block_simulation_settings 
+    ! 
+    ! author        - i.scivetti July 2021
+    ! modification  - i.scivetti Aug  2022 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    ! Check what to print or not for a given directive, with name ref_data%key  
+    Character(Len=*), Intent(In   ) :: sentence 
+    Type(type_extra), Intent(In   ) :: set_directives
+    Logical,          Intent(  Out) :: found
+   
+    Character(Len=256) :: word
+    Integer(Kind=wi)   :: j
+
+    found=.False.
+
+    j=1
+    Do While (j <= set_directives%N0 .And. (.Not. found))
+      word=set_directives%array(j)
+      Call capital_to_lower_case(word)
+      If (Trim(sentence) == Trim(word)) Then 
+        found=.True.
+      End If
+      j=j+1
+    End Do
+
+  End Subroutine scan_extra_directive
+
+  Subroutine record_directive(iunit, message, tag, name_dir, ic) 
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    ! Subroutine to print and keep record of the directives for the
+    ! atomisitc simulations 
+    ! 
+    ! author    - i.scivetti July 2021
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    Integer(Kind=wi), Intent(In   ) :: iunit 
+    Character(Len=*), Intent(In   ) :: message  
+    Character(Len=*), Intent(In   ) :: tag      
+    Character(Len=*), Intent(  Out) :: name_dir
+    Integer(Kind=wi), Intent(InOut) :: ic
+
+    Write(iunit, '(a)') Trim(message)
+    name_dir= Trim(tag)
+    ic=ic+1
+
+  End Subroutine record_directive
+
+  Subroutine print_warnings(header, print_header, message, dim)
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    ! Auxiliary subroutine to print warning headers 
     !
-    ! author    - i.scivetti August 2022
+    ! author    - i.scivetti May 2021
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    Character(Len=256), Intent(In   ) :: header
+    Logical,            Intent(InOut) :: print_header
+    Character(Len=256), Intent(In   ) :: message(*) 
+    Integer(Kind=wi),   Intent(In   ) :: dim     
+
+    If (print_header) Then
+      Call info(header,1)
+      print_header=.False.
+    End If
+    Call info(message,dim)
+
+  End Subroutine print_warnings
+
+  Subroutine check_initial_magnetization(net_elements, list_tag, N0, mag_ini, target_mag)
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    ! Subroutine to print the initial magnetic moments of the resulting models. 
+    ! This subroutine is only invoked if there are differences between the assigned
+    ! total magnetization and the initial magnetization of the generated model
+    ! 
+    ! author    - i.scivetti May-July 2021
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    Integer(Kind=wi),  Intent(In   ) :: net_elements
+    Character(Len=8),  Intent(In   ) :: list_tag(max_components) 
+    Integer(Kind=wi),  Intent(In   ) :: N0(net_elements)
+    Real(Kind=wp),     Intent(In   ) :: mag_ini(max_components)
+    Real(Kind=wp),     Intent(In   ) :: target_mag
 
-    Type(type_ref_data), Intent(In   ) :: ref_data
-    Character(Len=*),    Intent(In   ) :: set
-    Logical,             Intent(In   ) :: found
-    Logical,             Intent(  Out) :: print_msn
-    Character(Len=*),    Intent(  Out) :: msn
-    Character(Len=*),  Optional,  Intent(In   ) :: condition
-
-    Integer(Kind=wi)    :: extra_int, io
-    Logical             :: extra_logic    
-    Real(Kind=wp)       :: extra_real
-    Character(Len=256)  :: action_dir
-
-    print_msn=.False.
-
-    If (Present(condition))then
-      action_dir='complain'
-    Else
-      action_dir='allow'
-    End If    
+    Real(Kind=wp)      :: tot_mag
+    Character(Len=256) :: message
+    Character(Len=256) :: messages(3)
+    Integer(Kind=wi) :: i
+  
+    tot_mag=0.0_wp
+    Do i=1, net_elements
+      tot_mag=tot_mag+mag_ini(i)*N0(i)
+    End Do
  
-    If (found) Then
-      If (Trim(ref_data%keytype) == 'integer') Then 
-        Read(set, Fmt=*, iostat=io) extra_int
-      Else If (Trim(ref_data%keytype) == 'logical') Then
-        Read(set, Fmt=*, iostat=io) extra_logic
-      Else If (Trim(ref_data%keytype) == 'real') Then
-        Read(set, Fmt=*, iostat=io) extra_real
-      End If
-      If (io/=0) Then
-        print_msn=.True.
-        Write (msn, '(1x,5a)') '  ***ERROR: keyword "', Trim(ref_data%key),&
-                                  & '" must be ', Trim(ref_data%keytype),&
-                                  & '. PLEASE FIX THIS KEYWORD. To keep the already generated models, &
-                                  & change the analysis directive to "hpc_simulation_files" and rerun.'
-      End If
-      If (Trim(action_dir) == 'complain') Then
-        print_msn=.True.
-        Write (msn, '(1x,5a)') '  ***ERROR: keyword "', Trim(ref_data%key),&
-                                  & '" is not compatible with the option of "', Trim(condition),&
-                                  & '". PLEASE FIX THIS KEYWORD. To keep the already generated models,&
-                                  & change the analysis directive to "hpc_simulation_files" and rerun.'
-      End If
-    Else
-      If (Trim(action_dir) == 'allow') Then
-        print_msn=.True.
-        Write (msn, '(1x,5a,1x,a)') '  * ', Trim(ref_data%key), Trim(ref_data%msn),&
-                               & ' Default is ', Trim(ref_data%set_default), Trim(ref_data%units)
-      End If
+    If (Abs(tot_mag-target_mag) > error_mag) Then
+      Call info(' ', 1)
+      Call info(' Summary of the total amount and initial magnetic moment of species', 1)
+      Call info(' -------------------------------------------------', 1)
+      Write (message, '(1x,a,2(6x,a))') 'Tag', 'Amount', 'Initial magnetic moment/spin'
+      Call info(message, 1)
+      Call info(' -------------------------------------------------', 1)
+      Do i=1, net_elements
+        Write (message, '(1x,a,2x,i5,f10.2)') list_tag(i), N0(i), mag_ini(i) 
+        Call info(message, 1)    
+      End Do
+      Call info(' -------------------------------------------------', 1)
+      Write (messages(1),'(1x,a,f10.2)') 'Total initial magnetic moment/spin: ', tot_mag
+      Write (messages(2),'(1x,a,f10.2,a)') 'Targeted magnetic moment/spin:      ',&
+                                     & target_mag,&
+                                     & ' (from the value of "total_magnetization")' 
+      Write (messages(3),'(1x,a)') '***ERROR: "total_magnetization" must be&
+                                   & equal to the total initial magnetization (or viceversa). Please change the&
+                                   & value of "total_magnetization" (or values in sub-block &magnetization).&
+                                   & If problems persist, remove "total_magnetization".'
+      Call info(messages, 3)
+      Call error_stop(' ')
     End If
 
-  End Subroutine extra_directive_setting
-
-
+  End Subroutine check_initial_magnetization
+  
   Subroutine set_reference_database(ref_database, num_ref_data, code, functionality)
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     ! Set reference database for keywords compatible with the requested
@@ -890,10 +708,57 @@ Contains
         ref_database(15)%units=' '
 
         num_ref_data=15
-
       End If
+
+     If (Trim(functionality) == 'DL_MG') Then
+
+       ref_database(1)%key='mg_use_cg'
+       ref_database(1)%keytype='logical'
+       ref_database(1)%msn=': if .True., it turns on the conjugate gradient solver to increase&
+                           & stability at expenses of reducing the performance.'
+       ref_database(1)%set_default='False'
+       ref_database(1)%units=' '
+
+       ref_database(2)%key='mg_max_iters_vcycle'
+       ref_database(2)%keytype='integer'
+       ref_database(2)%msn=': maximum number of multigrid V-cycle iterations.'
+       ref_database(2)%set_default='50'
+       ref_database(2)%units=' '
+
+       ref_database(3)%key='mg_vcyc_smoother_iter_pre'
+       ref_database(3)%keytype='integer'
+       ref_database(3)%msn=': sets the number of V-cycle smoother iterations pre-smoothing.&
+                           & Set it to 4 and 8 for difficult systems.'
+       ref_database(3)%set_default='2'
+       ref_database(3)%units=' '
+
+       ref_database(4)%key='mg_vcyc_smoother_iter_post'
+       ref_database(4)%keytype='integer'
+       ref_database(4)%msn=': sets the number of V-cycle smoother iterations post-smoothing.&
+                          & Set it to 4 and 8 for difficult systems.'
+       ref_database(4)%set_default='1'
+       ref_database(4)%units=' '
+
+       ref_database(5)%key='mg_defco_fd_order'
+       ref_database(5)%keytype='integer'
+       ref_database(5)%msn=': sets the discretization order used when solving the P(B)E.&
+                                & Value must be even an integer. Recommended value is 8.'
+       ref_database(5)%set_default='8'
+       ref_database(5)%units=' '
+
+       ref_database(6)%key='mg_max_iters_newton'
+       ref_database(6)%keytype='integer'
+       ref_database(6)%msn=': sets the maximum number of Newton method iterations. Only relevant if&
+                            & solver is set to "full" (&electrolyte). Increase it for difficult systems.'
+       ref_database(6)%set_default='30'
+       ref_database(6)%units=' '
+     
+        num_ref_data=6
+      End If
+
     End If
 
   End Subroutine set_reference_database
-
+  
+  
 End Module simulation_tools

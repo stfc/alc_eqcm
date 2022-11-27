@@ -45,7 +45,7 @@ Program alc_eqcm
   Use fft,               Only: fft_type, & 
                                fftnmax 
   Use filtering,         Only: filter_type
-  Use hpc_setup,         Only: hpc_type, &
+  Use hpc,               Only: hpc_type, &
                                build_hpc_script 
   Use numprec,           Only: wi,& 
                                wp
@@ -54,7 +54,7 @@ Program alc_eqcm
   Use sauerbrey,         Only: sauer_type, &
                                sauerbrey_correlation, &
                                sauerbrey_transformation
-  Use simulation_tools,  Only: simul_type 
+  Use simulation_setup,  Only: simul_type 
   Use settings,          Only: read_settings, &
                                check_all_settings,&
                                check_feasibility
@@ -203,6 +203,5 @@ Implicit None
   If (hpc_data%generate) Then
     Call execute_command_line('rm '//Trim(files(FILE_HPC_SETTINGS)%filename))
   End If
-
 
 End Program alc_eqcm

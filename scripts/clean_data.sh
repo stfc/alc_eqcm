@@ -6,3 +6,4 @@
 [ -f 'OUT_EQCM' ]         && rm OUT_EQCM
 [ -f 'SET_SIMULATION' ]   && rm SET_SIMULATION
 [ -f 'SET_KPOINTS'    ]   && rm SET_KPOINTS
+[ -f 'POTCAR'         ]   && rm POTCAR

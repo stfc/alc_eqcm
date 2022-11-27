@@ -213,7 +213,7 @@ Contains
     Write (header(2), fmt2)  "#                      WELCOME TO ", Trim(code_name),  Repeat(" ", 31)//"#"
     Write (header(3), fmt1)  "#  SCD/ALC program for Electrochemical analysis and atomistic modeling   #"
     Write (header(4), fmt1)  "#  using Electrochemical Quartz Crystal Microbalance (EQCM) experiments  #"
-    Write (header(5), fmt3)  "#  version:  ", Trim(code_VERSION), Repeat(' ',57),                     "#"
+    Write (header(5), fmt3)  "#  version:  ", Trim(code_VERSION), Repeat(' ',55),                     "#"
     Write (header(6), fmt3)  "#  release:  ", Trim(date_RELEASE), Repeat(' ',52),                     "#"
     Write (header(7), fmt1)  "#                                                                        #"
     Write (header(8), fmt1)  "#  Copyright:  2022  Ada Lovelace Centre (ALC)                           #"

@@ -29,6 +29,10 @@ Module redox
     Integer(Kind=wi), Public     :: ncycles
     Integer(Kind=wi), Public     :: maxpoints
     Integer(Kind=wi), Public     :: limit_cycles
+    Integer(Kind=wi), Public     :: legs
+    Real(Kind=wp),    Public     :: min_voltage
+    Real(Kind=wp),    Public     :: max_voltage
+    Logical,          Public     :: l_voltage_range
 
     ! Charge variables
     Real(Kind=wp), Allocatable, Public :: DQ_ox(:)
@@ -60,10 +64,10 @@ Module redox
 
   Contains
     Private
-    Procedure, Public :: init_variables => allocate_redox_variables
-    Procedure, Public :: init_mass      => allocate_redox_mass_arrays
-    Procedure, Public :: init_charge    => allocate_redox_charge_arrays
-    Final             :: cleanup
+    Procedure :: init_variables => allocate_redox_variables
+    Procedure :: init_mass      => allocate_redox_mass_arrays
+    Procedure :: init_charge    => allocate_redox_charge_arrays
+    Final     :: cleanup
   End Type redox_type
 
 
@@ -237,30 +241,18 @@ Contains
     Type(eqcm_type),      Intent(InOut) :: eqcm_data
     Type(electrode_type), Intent(InOut) :: electrode_data 
 
-    Character(Len=256)   :: messages(2)
+    Character(Len=256)   :: messages(3)
     
+    redox_data%l_voltage_range=.False.
+
     Call info(' ',1)
     Write (messages(1),'(1x,a)') 'Characterization analysis'
-    Call info(messages,1)
-    Write (messages(1),'(1x,a)') '========================='
-    Call info(messages,1)
+    Write (messages(2),'(1x,a)') '========================='
+    Call info(messages, 2)
 
-    Call redox_cycles(eqcm_data, redox_data%ncycles, redox_data%maxpoints)
-    Call redox_data%init_variables(eqcm_data%time%fread)
-
-    Call label_redox_processes(eqcm_data, redox_data)
-
-    ! Allocate variables
-    If (eqcm_data%current%fread) Then
-      Call redox_data%init_charge()
-    End If
+    Call redox_cycles(eqcm_data, redox_data)
 
     !Extract values and integrate quantities
-    If (eqcm_data%mass_frequency%fread .Or. eqcm_data%mass%fread) Then
-      Call redox_data%init_mass()
-    End If
-    Call assign_redox_variables(eqcm_data, redox_data) 
-
     If (eqcm_data%current%fread) Then
       Call integrate_redox_current(eqcm_data, redox_data)
     End If   
@@ -270,14 +262,42 @@ Contains
       Call extract_Dmass(eqcm_data, redox_data, electrode_data)
     End If
 
+    Write (messages(1),'(1x,a)') 'Relevant computed quantities from the reported data'
+    Call info(messages, 1)
     Call integrated_quantitites_summary(redox_data, eqcm_data) 
-
     Call print_redox_characterization(files, redox_data, eqcm_data)
+
+    If (eqcm_data%voltage_range%fread) Then 
+      ! Determine if the requested voltage range includes of not the whole CV domain
+      Call check_voltage_range_domain(eqcm_data, redox_data)
+      Call info(' ',1)
+
+      If (redox_data%l_voltage_range) Then
+        If (eqcm_data%current%fread) Then
+          Call integrate_redox_current(eqcm_data, redox_data)
+        End If   
+        Write (messages(1),'(1x,a,2(f8.2,a))') 'Computed quantities within the requested voltage range: ', &
+                                                eqcm_data%voltage_range%value(1),  ' V /', &
+                                                eqcm_data%voltage_range%value(2),  ' V'
+        Call info(messages, 1)
+        If (eqcm_data%current%fread) Then
+          Call integrate_redox_current(eqcm_data, redox_data)
+        End If   
+        If (eqcm_data%mass_frequency%fread .Or. eqcm_data%mass%fread) Then
+          Call extract_Dmass(eqcm_data, redox_data, electrode_data)
+        End If
+
+        Call integrated_quantitites_summary(redox_data, eqcm_data) 
+      Else
+        Write (messages(1),'(1x,a)') '**** WARNING: The set of recorded EQCM is within the requested voltage range.'
+        Write (messages(2),'(1x,a)') '     There is NO need to recompute the quantities of the table above.'
+        Call info(messages, 2)
+      End If  
+    End If  
 
   End Subroutine redox_characterization
 
-
-  Subroutine assign_redox_variables(eqcm_data, redox_data)
+  Subroutine check_voltage_range_domain(eqcm_data, redox_data)
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     ! Subroutine to assign the eqcm values of CV cycles to redox cycles
     ! 
@@ -286,150 +306,206 @@ Contains
     Type(eqcm_type),    Intent(InOut) :: eqcm_data
     Type(redox_type),   Intent(InOut) :: redox_data
 
-    Integer(Kind=wi)  :: i, j, l, k, icycle
-    Logical           :: flag, flag_neg, flag_pos
-    Integer(Kind=wi)  :: points(eqcm_data%ncycles)
-   
-    points=0
+    Integer(Kind=wi)   :: i, k, ic
+    Real(Kind=wp)      :: average, DV
+    Character(Len=256) :: message
 
-    l=0 
-    icycle=1
-    flag =.True.
-    flag_neg=.False.
-    flag_pos=.False.
+    redox_data%min_voltage= Huge(1.0_wp)
+    redox_data%max_voltage=-Huge(1.0_wp)
 
-    Do i = 1, eqcm_data%ncycles
-      Do j= 1, 2
-        Do k=1, eqcm_data%segment_points(j,i)
+    ic=0
+    average=0.0_wp
 
-          If (eqcm_data%scan_sweep_ref=='negative' .And. eqcm_data%current%value(k,j,i)<0.0_wp .And. (.Not. flag_neg)) Then
-            flag_neg=.True. 
-          End If          
+    DV=Abs(eqcm_data%voltage_range%value(2)-eqcm_data%voltage_range%value(1))
 
-          If (flag_neg) Then
-            If (i/=1 .And. eqcm_data%label_leg(j,i)=='negative' .And. eqcm_data%current%value(k,j,i)<=0.0_wp .And. flag) Then
-              redox_data%points(icycle)=l
-              icycle=icycle+1
-              l=0
-              flag=.False.
-            End If
-            l=l+1
-            redox_data%voltage(l,icycle)= eqcm_data%voltage%value(k,j,i)
-            redox_data%current(l,icycle)  = eqcm_data%current%value(k,j,i)
+    Do i = 1, redox_data%limit_cycles
+      Do k=1, redox_data%points(i)
+         If (k < redox_data%points(i))Then
+           ic=ic+1
+           average=average+Abs(redox_data%voltage(k+1,i)-redox_data%voltage(k,i))           
+         End If        
+         If(redox_data%min_voltage > redox_data%voltage(k,i)) Then
+           redox_data%min_voltage= redox_data%voltage(k,i)      
+         End If        
+         If(redox_data%max_voltage < redox_data%voltage(k,i)) Then
+           redox_data%max_voltage= redox_data%voltage(k,i)      
+         End If        
+      End Do 
+    End Do
 
-            If (eqcm_data%time%fread) Then
-              redox_data%time(l,icycle)=eqcm_data%time%value(k,j,i)
-            End If
+    average=average/ic
+    If (average > DV) Then     
+       Write(message, '(a)') '****ERROR: the voltage range defined with the "voltage_range" directive is smaller than&
+                            & the average discretiation voltage used for the EQCM experiment! Please review the settings'
+       Call error_stop(message)               
+    End If 
 
-            If (eqcm_data%mass%fread) Then
-                redox_data%mass(l,icycle)=eqcm_data%mass%value(k,j,i)
-            Else 
-              If (eqcm_data%mass_frequency%fread) Then
-                redox_data%mass(l,icycle)=eqcm_data%mass_frequency%value(k,j,i)
-              End If
-            End If
- 
-            If (eqcm_data%label_leg(j,i)=='positive' .And. (.Not. flag) )flag=.True.
-          End If
+    If ((eqcm_data%voltage_range%value(1) > redox_data%min_voltage) .Or. &
+        (eqcm_data%voltage_range%value(2) < redox_data%max_voltage)) Then
+        redox_data%l_voltage_range=.True.
+    End If    
 
-          If (eqcm_data%scan_sweep_ref=='positive' .And. eqcm_data%current%value(k,j,i)>0.0_wp .And. (.Not. flag_pos)) Then
-            flag_pos=.True. 
-          End If          
+  End Subroutine check_voltage_range_domain
 
-          If (flag_pos) Then
-            If (i/=1 .And. eqcm_data%label_leg(j,i)=='positive' .And. eqcm_data%current%value(k,j,i)>=0.0_wp .And. flag) Then
-              redox_data%points(icycle)=l
-              icycle=icycle+1
-              l=0
-              flag=.False.
-            End If
-            l=l+1
-            redox_data%voltage(l,icycle)= eqcm_data%voltage%value(k,j,i)
-            redox_data%current(l,icycle)  = eqcm_data%current%value(k,j,i)
-
-            If (eqcm_data%time%fread) Then
-              redox_data%time(l,icycle)=eqcm_data%time%value(k,j,i)
-            End If  
-
-            If (eqcm_data%mass%fread) Then
-              redox_data%mass(l,icycle)=eqcm_data%mass%value(k,j,i)
-            Else         
-              If (eqcm_data%mass_frequency%fread) Then
-                redox_data%mass(l,icycle)=eqcm_data%mass_frequency%value(k,j,i)
-              End If 
-            End If 
-
-            If (eqcm_data%label_leg(j,i)=='negative' .And. (.Not. flag) )flag=.True.
-          End If
-        End Do
-      End Do
-    End Do   
- 
-    redox_data%points(icycle)=l
-
-  End Subroutine assign_redox_variables   
-
-  Subroutine redox_cycles(eqcm_data, ncycles, maxpoints)
+  Subroutine redox_cycles(eqcm_data, redox_data)
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     ! Define the number of redox cycles and the number of point per each 
     ! redox cycle
     ! 
     ! author    - i.scivetti July 2020
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    Type(eqcm_type),  Intent(InOut) :: eqcm_data
-    Integer(Kind=wi), Intent(  Out) :: ncycles
-    Integer(Kind=wi), Intent(  Out) :: maxpoints
+    Type(eqcm_type),    Intent(In   ) :: eqcm_data
+    Type(redox_type),   Intent(InOut) :: redox_data
 
-    Integer(Kind=wi)  :: i, j, l, k, icycle
-    Logical           :: flag, flag_neg, flag_pos
+    Integer(Kind=wi)  :: i, j, l, k, m
+    Integer(Kind=wi)  :: icycle, n_tot, n_ini
+    Logical           :: flag, flag_neg, flag_pos, flag_ini
     Integer(Kind=wi)  :: points(eqcm_data%ncycles)
-   
-    points=0
 
+    Integer(Kind=wi), Allocatable :: i1(:)
+    Integer(Kind=wi), Allocatable :: i2(:)
+    Integer(Kind=wi), Allocatable :: i3(:)
+
+    ! Obtain the total number of points
+    n_tot=0
+    Do i = 1, eqcm_data%ncycles
+      Do j= 1, 2
+        Do k=1, eqcm_data%segment_points(j,i)
+          n_tot=n_tot+1 
+        End Do
+      End Do
+    End Do 
+
+    ! Allocate temporary arrays 
+    Allocate(i1(n_tot)) 
+    Allocate(i2(n_tot)) 
+    Allocate(i3(n_tot)) 
+
+    ! define index arrays
+    m=0
+    Do i = 1, eqcm_data%ncycles
+      Do j= 1, 2
+        Do k=1, eqcm_data%segment_points(j,i)
+          m=m+1 
+          i1(m)=k
+          i2(m)=j
+          i3(m)=i
+        End Do
+      End Do
+    End Do 
+
+    !Initialise variables
     l=0 
     icycle=1
     flag =.True.
     flag_neg=.False.
     flag_pos=.False.
+    flag_ini=.True.
+    points=0
 
-    Do i = 1, eqcm_data%ncycles
-      Do j= 1, 2
-        Do k=1, eqcm_data%segment_points(j,i)
-          If (eqcm_data%scan_sweep_ref=='negative' .And. eqcm_data%current%value(k,j,i)<0.0_wp) Then
-           flag_neg=.True. 
-          End If          
-          If (flag_neg) Then
-            If (i/=1 .And. eqcm_data%label_leg(j,i)=='negative' .And. eqcm_data%current%value(k,j,i)<0.0_wp .And. flag) Then
-              points(icycle)=l
-              icycle=icycle+1
-              l=0
-              flag=.False.
-            End If
-            l=l+1
-            If (eqcm_data%label_leg(j,i)=='positive' .And. (.Not. flag) )flag=.True.
-          End If
+    ! Set oxidation and reduction parts of the redox cycles
+    Do m=1, n_tot 
+      If (eqcm_data%scan_sweep_ref=='negative' .And. eqcm_data%current%value(i1(m),i2(m),i3(m)) < 0.0_wp) Then
+        flag_neg=.True.
+        If (flag_ini) Then
+          flag_ini=.False.
+          n_ini=m      
+        End If       
+      End If          
+
+      If (flag_neg) Then
+        If (i3(m)/=1 .And. eqcm_data%label_leg(i2(m),i3(m))=='negative' .And. &
+            eqcm_data%current%value(i1(m),i2(m),i3(m))<0.0_wp .And. flag) Then
+          points(icycle)=l
+          icycle=icycle+1
+          l=0
+          flag=.False.
+        End If
+        l=l+1
+        If (eqcm_data%label_leg(i2(m),i3(m))=='positive' .And. (.Not. flag)) Then
+           flag=.True.
+        End If   
+      End If
   
-          If (eqcm_data%scan_sweep_ref=='positive' .And. eqcm_data%current%value(k,j,i)>0.0_wp) Then
-           flag_pos=.True. 
-          End If          
-          If (flag_pos) Then
-            If (i/=1 .And. eqcm_data%label_leg(j,i)=='positive' .And. eqcm_data%current%value(k,j,i)>0.0_wp .And. flag) Then
-              points(icycle)=l
-              icycle=icycle+1
-              l=0
-              flag=.False.
-            End If
-            l=l+1
-            If (eqcm_data%label_leg(j,i)=='negative' .And. (.Not. flag) )flag=.True.
-          End If
-        End Do
-      End Do
+      If (eqcm_data%scan_sweep_ref=='positive' .And. eqcm_data%current%value(i1(m),i2(m),i3(m)) >= 0.0_wp) Then
+        flag_pos=.True. 
+        If (flag_ini) Then
+          flag_ini=.False.
+          n_ini=m      
+        End If       
+      End If          
+
+      If (flag_pos) Then
+        If (i3(m)/=1 .And. eqcm_data%label_leg(i2(m),i3(m))=='positive' .And. &
+          eqcm_data%current%value(i1(m),i2(m),i3(m)) > 0.0_wp .And. flag) Then
+          points(icycle)=l
+          icycle=icycle+1
+          l=0
+          flag=.False.
+        End If
+        l=l+1
+        If (eqcm_data%label_leg(i2(m),i3(m))=='negative' .And. (.Not. flag)) Then
+           flag=.True.
+        End If
+      End If
     End Do 
- 
     points(icycle)=l
 
-    ncycles   = icycle
-    maxpoints = maxval(points)
+    redox_data%ncycles   = icycle
+    redox_data%maxpoints = maxval(points)
+
+    ! Initialise redox related arrays
+    Call redox_data%init_variables(eqcm_data%time%fread)
+    ! label
+    Call label_redox_processes(eqcm_data, redox_data)
+
+    ! Allocate charge variables
+    If (eqcm_data%current%fread) Then
+      Call redox_data%init_charge()
+    End If
+
+    ! Allocate mass variables
+    If (eqcm_data%mass_frequency%fread .Or. eqcm_data%mass%fread) Then
+      Call redox_data%init_mass()
+    End If
+ 
+    ! Define the amount of cycles
+    Do i=1, redox_data%ncycles
+      redox_data%points(i)=points(i)
+    End Do
+
+    l=0 
+    icycle=1
+
+    ! Assign EQCM data to redox 
+    Do m=n_ini, n_tot
+      If(l+1 > redox_data%points(icycle))Then
+        l=1
+        icycle=icycle+1
+      Else
+        l=l+1
+      End If
+      
+      redox_data%voltage(l,icycle) = eqcm_data%voltage%value(i1(m),i2(m),i3(m))
+      redox_data%current(l,icycle) = eqcm_data%current%value(i1(m),i2(m),i3(m))
+
+      If (eqcm_data%time%fread) Then
+        redox_data%time(l,icycle)=eqcm_data%time%value(i1(m),i2(m),i3(m))
+      End If
+
+      If (eqcm_data%mass%fread) Then
+          redox_data%mass(l,icycle)=eqcm_data%mass%value(i1(m),i2(m),i3(m))
+      Else 
+        If (eqcm_data%mass_frequency%fread) Then
+          redox_data%mass(l,icycle)=eqcm_data%mass_frequency%value(i1(m),i2(m),i3(m))
+        End If
+      End If
+    End Do 
+    
+    ! Deallocate
+    Deallocate(i3) 
+    Deallocate(i2) 
+    Deallocate(i1) 
 
   End Subroutine redox_cycles   
 
@@ -441,7 +517,7 @@ Contains
     ! author    - i.scivetti June 2020
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     Type(redox_type),     Intent(InOut) :: redox_data
-    Type(eqcm_type),      Intent(InOut) :: eqcm_data
+    Type(eqcm_type),      Intent(In   ) :: eqcm_data
 
     Integer(Kind=wi)   :: i, j
     Character(Len=256) :: message, line
@@ -469,9 +545,6 @@ Contains
       fmt4 = '(1x,i3, a)'
       fmt5 = '(1x,    a)'
     End If
-
-    Write (message,'(1x,a)') 'Relevant computed quantities from the reported data'
-    Call info(message, 1)
 
     If (lmlch) Write (line,'(1x,a)') '-----------------------------------------------------------------'
     If (lch)   Write (line,'(1x,a)') '--------------------------------------------'
@@ -527,7 +600,7 @@ Contains
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     Type(file_type),   Intent(InOut) :: files(:)
     Type(redox_type),  Intent(InOut) :: redox_data
-    Type(eqcm_type),   Intent(InOut) :: eqcm_data
+    Type(eqcm_type),   Intent(In   ) :: eqcm_data
  
     Integer(Kind=wi)  :: iunit, i
     Real(Kind=wp)     :: dMdQ_red, dMdQ_ox, dQdQ 
@@ -548,7 +621,6 @@ Contains
         lchg_ratio='|Q_ox/Q_red|'
       End If
     End If
-
 
     If (eqcm_data%mass_frequency%fread .And. (eqcm_data%current%fread)) Then
       Write (iunit,'(1x,11(a,4x))') '#Cycle', 'Dmass_oxidation [ng]', 'Dmass_reduction [ng]', &
@@ -620,7 +692,7 @@ Contains
     ! 
     ! author    - i.scivetti July 2020
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    Type(eqcm_type),    Intent(InOut) :: eqcm_data
+    Type(eqcm_type),    Intent(In   ) :: eqcm_data
     Type(redox_type),   Intent(InOut) :: redox_data
 
     Logical            :: flag
@@ -670,33 +742,12 @@ Contains
 
     End Do
 
-
   End Subroutine label_redox_processes   
-
-  Subroutine redox_differences(label, oxi, red, diff)
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    ! Auxiliary subroutine for heading
-    !
-    ! author    - i.scivetti June 2020
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    Character(Len=*), Intent(In   ) :: label(:)
-    Real(Kind=wp),    Intent(In   ) :: oxi, red 
-    Real(Kind=wp),    Intent(  Out) :: diff
-    
-    If (label(1)=='positive' .And. label(2)=='negative') Then
-     diff=Abs(oxi+red)  
-    ElseIf (label(1)=='negative' .And. label(2)=='positive') Then
-     diff=Abs(red+oxi)
-    Else
-     diff=0.0_wp  
-    End If
-
-  End Subroutine redox_differences
-
 
   Subroutine integrate_redox_current(eqcm_data, redox_data)
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     ! Integrate the current within the voltage/time range for oxidation/reduction
+    ! The operation is computed within the voltage range 
     ! 
     ! author    - i.scivetti June 2020
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -711,25 +762,40 @@ Contains
       redox_data%DQ_red(i)=0.0_wp
       Dchg=0.0_wp
       If (redox_data%points(i) >2) Then
-
         Do k=2, redox_data%points(i)
-            If (eqcm_data%time%fread) Then
-              Dt=Abs(redox_data%time(k,i)-redox_data%time(k-1,i))
+          If (eqcm_data%time%fread) Then
+            Dt=Abs(redox_data%time(k,i)-redox_data%time(k-1,i))
+          Else
+            Dt=Abs(redox_data%voltage(k,i)-redox_data%voltage(k-1,i))/eqcm_data%scan_rate%value(1)
+          End If 
+          Dchg=Dt*(redox_data%current(k,i)+redox_data%current(k-1,i))/2.0_wp
+
+          If (redox_data%current(k,i) >= 0.0_wp) Then
+            If (.Not. redox_data%l_voltage_range) Then      
+              redox_data%DQ_ox(i)=redox_data%DQ_ox(i)+Dchg
+              redox_data%Q_ox(k,i)=redox_data%Q_ox(k-1,i)+Dchg
             Else
-              Dt=Abs(redox_data%voltage(k,i)-redox_data%voltage(k-1,i))/eqcm_data%scan_rate%value(1)
-            End If 
-            Dchg=Dt*(redox_data%current(k,i)+redox_data%current(k-1,i))/2.0_wp
-            If (redox_data%current(k,i) >= 0.0_wp) Then
-             redox_data%DQ_ox(i)=redox_data%DQ_ox(i)+Dchg
-             redox_data%Q_ox(k,i)=redox_data%Q_ox(k-1,i)+Dchg
+              If ((eqcm_data%voltage_range%value(1) <= redox_data%voltage(k,i)) .And. &
+                 (eqcm_data%voltage_range%value(2) >= redox_data%voltage(k,i))) Then   
+                  redox_data%DQ_ox(i)=redox_data%DQ_ox(i)+Dchg
+                  redox_data%Q_ox(k,i)=redox_data%Q_ox(k-1,i)+Dchg
+              End If        
+            End If        
+          Else
+            If (.Not. redox_data%l_voltage_range) Then      
+              redox_data%DQ_red(i)=redox_data%DQ_red(i)+Dchg
+              redox_data%Q_red(k,i)=redox_data%Q_red(k-1,i)+Dchg
             Else
-             redox_data%DQ_red(i)=redox_data%DQ_red(i)+Dchg
-             redox_data%Q_red(k,i)=redox_data%Q_red(k-1,i)+Dchg
+              If ((eqcm_data%voltage_range%value(1) <= redox_data%voltage(k,i)) .And. &
+                 (eqcm_data%voltage_range%value(2) >= redox_data%voltage(k,i))) Then   
+                  redox_data%DQ_red(i)=redox_data%DQ_red(i)+Dchg
+                  redox_data%Q_red(k,i)=redox_data%Q_red(k-1,i)+Dchg
+              End If
             End If
+          End If
         End Do
       End If 
-      Call redox_differences(eqcm_data%label_leg(:,i), redox_data%DQ_ox(i), &
-                            & redox_data%DQ_red(i), redox_data%Q_diff(i))
+      redox_data%Q_diff(i)=Abs(redox_data%DQ_ox(i)+redox_data%DQ_red(i))
     End Do    
 
   End Subroutine integrate_redox_current
@@ -746,97 +812,195 @@ Contains
     Type(electrode_type), Intent(In   ) :: electrode_data 
 
     Integer(Kind=wi)   :: i, k
-    Real(Kind=wp)      :: dV, mass_limit
-    Logical            :: flip_pos, flip_neg, fpass
+    Real(Kind=wp)      :: dV, dVfw, mass_limit
+    Logical            :: fpass
     Character(Len=256) :: message
 
-    If (.Not. eqcm_data%mass%fread) Then 
-      redox_data%mass=electrode_data%area_geom%value*redox_data%mass  
-    End If
+    Real(Kind=wp)      :: mox_f(2)
+    Real(Kind=wp)      :: mox_b(2)
+    Real(Kind=wp)      :: mred_f(2)
+    Real(Kind=wp)      :: mred_b(2)
 
-    Do i = 1, redox_data%limit_cycles
-      mass_limit=0.0_wp
-      k=1
-      fpass=.True.
+    Logical            :: fox_f(2)
+    Logical            :: fox_b(2)
+    Logical            :: fred_f(2)
+    Logical            :: fred_b(2)
 
-      If (eqcm_data%scan_sweep_ref=='negative') Then
-        flip_pos=.False.
-        flip_neg=.True. 
-      Else If (eqcm_data%scan_sweep_ref=='positive') Then
-        flip_pos=.True.
-        flip_neg=.False. 
+    If (.Not. redox_data%l_voltage_range) Then
+      ! Only if mass is not read from DATA_EQCM
+      If (.Not. eqcm_data%mass%fread) Then 
+        redox_data%mass=electrode_data%area_geom%value*redox_data%mass  
       End If
 
-      Do While (k <= redox_data%points(i)-1 .And. fpass)
-        dV=redox_data%voltage(k+1,i)-redox_data%voltage(k,i)
-        If (eqcm_data%scan_sweep_ref=='negative' .And. dV>0 ) Then
-          If ((.Not. flip_pos) .And. redox_data%current(k,i)>0) Then
-           flip_pos=.True.
-           flip_neg=.False.
-           Mass_limit = redox_data%mass(k-1,i)
-           fpass=.False.
+      Do i = 1, redox_data%limit_cycles
+        mass_limit=0.0_wp
+        k=1
+        fpass=.True.
+
+        Do While (k <= redox_data%points(i)-1 .And. fpass)
+          dV=redox_data%voltage(k+1,i)-redox_data%voltage(k,i)
+          If (eqcm_data%scan_sweep_ref=='negative' .And. dV>0 ) Then
+            If (redox_data%current(k,i)>0) Then
+              Mass_limit = redox_data%mass(k-1,i)
+              fpass=.False.
+            End If
           End If
-  
-          If ((.Not. flip_neg) .And. redox_data%current(k,i)<0) Then
-           flip_pos=.False.
-           flip_neg=.True.
-          End If
-        End If
    
-        If (eqcm_data%scan_sweep_ref=='positive' .And. dV<0 ) Then
-          If ((.Not. flip_pos) .And. redox_data%current(k,i)>0) Then
-           flip_pos=.True.
-           flip_neg=.False.
+          If (eqcm_data%scan_sweep_ref=='positive' .And. dV<0 ) Then
+            If (redox_data%current(k,i)<0) Then
+              Mass_limit = redox_data%mass(k-1,i)
+              fpass=.False.
+            End If
           End If
+          k=k+1
+        End Do
+
+        If (Abs(mass_limit)<epsilon(mass_limit)) Then
+          Write (message,'(1x,a,i3)') 'Problems to determine the change of mass for cycle ', i
+          Call error_stop(message)   
+        End If 
   
-          If ((.Not. flip_neg) .And. redox_data%current(k,i)<0) Then
-           flip_pos=.False.
-           flip_neg=.True.
-           Mass_limit = redox_data%mass(k-1,i)
-           fpass=.False.
+        If (eqcm_data%scan_sweep_ref=='negative') Then
+          redox_data%DM_red(i)=      mass_limit-redox_data%mass(1,i)  
+          redox_data%DM_ox(i) =      redox_data%mass(redox_data%points(i),i)-mass_limit  
+          redox_data%DM_residual(i)= redox_data%DM_red(i)+redox_data%DM_ox(i)
+          If (i== 1) Then
+            redox_data%DM_half(i)=redox_data%DM_red(i) 
+          Else
+            redox_data%DM_half(i)=redox_data%DM_red(i)+redox_data%DM_residual(i-1)
+            redox_data%DM_residual(i)=redox_data%DM_residual(i)+redox_data%DM_residual(i-1) 
+          End If
+        Else If (eqcm_data%scan_sweep_ref=='positive') Then
+          redox_data%DM_red(i)= redox_data%mass(redox_data%points(i),i)-mass_limit 
+          redox_data%DM_ox(i) = mass_limit-redox_data%mass(1,i)
+          redox_data%DM_residual(i)=redox_data%DM_ox(i)+redox_data%DM_red(i)
+          If (i== 1) Then
+            redox_data%DM_half(i)=redox_data%DM_ox(i) 
+          Else
+            redox_data%DM_half(i)=redox_data%DM_ox(i)+redox_data%DM_residual(i-1)
+            redox_data%DM_residual(i)=redox_data%DM_residual(i)+redox_data%DM_residual(i-1) 
           End If
         End If
-        k=k+1
+      End Do
+  
+    Else   
+      Do i = 1, redox_data%limit_cycles
+        k=1
+        ! Flags to determine voltage domains
+        fpass=.True.
+        fox_f(:)=.True.
+        fox_b(:)=.True.
+        fred_f(:)=.True.
+        fred_b(:)=.True.
+
+        ! Mass values 
+        mred_f(:)=0.0_wp
+        mred_b(:)=0.0_wp
+        mox_f(:)=0.0_wp
+        mox_b(:)=0.0_wp
+
+
+        Do While (k <= redox_data%points(i)-1 .And. fpass)
+          dV=redox_data%voltage(k+1,i)-redox_data%voltage(k,i)
+          If (k<redox_data%points(i)-1) Then
+            dVfw=redox_data%voltage(k+2,i)-redox_data%voltage(k+1,i)
+          End If
+          If (redox_data%current(k,i) >= 0.0_wp) Then
+            If (dV>0) Then
+              If ((eqcm_data%voltage_range%value(1) <= redox_data%voltage(k,i)) .And. fox_f(1)) Then
+                mox_f(1)=redox_data%mass(k,i)
+                fox_f(1)=.False.      
+              End If
+              If ((eqcm_data%voltage_range%value(2) < redox_data%voltage(k,i)) .And. fox_f(2)) Then
+                mox_f(2)=redox_data%mass(k-1,i)
+                fox_f(2)=.False.      
+              End If
+              If ((dVfw<0.0_wp .Or. (k+1 == redox_data%points(i))) .And. fox_f(2)) Then
+                mox_f(2)=redox_data%mass(k+1,i)
+                fox_f(2)=.False.      
+              End If         
+              ! Red
+              If (fred_f(1) .And. (.Not. fred_b(1))) Then
+                 mred_f(1)=redox_data%mass(k,i)
+                 fred_f(1)=.False.  
+               End If
+               If (fred_f(2) .And. (.Not. fred_b(2))) Then
+                 mred_f(2)=redox_data%mass(k,i)
+                 fred_f(2)=.False.  
+              End If
+            Else If (dV<0) Then 
+              If ((eqcm_data%voltage_range%value(2) >= redox_data%voltage(k,i)) .And. fox_b(2) .And. (.Not. fox_f(2))) Then
+                mox_b(2)=redox_data%mass(k,i)
+                fox_b(2)=.False.  
+              End If
+              If ((eqcm_data%voltage_range%value(1) > redox_data%voltage(k,i)) .And. fox_b(1) .And. (.Not. fox_f(1))) Then
+                mox_b(1)=redox_data%mass(k-1,i)
+                fox_b(1)=.False.  
+              End If
+
+              If (k+1==redox_data%points(i)) Then
+                If (fox_b(2)) Then
+                  mox_b(2)=redox_data%mass(k,i)
+                End If
+                If (fox_b(1)) Then
+                  mox_b(1)=redox_data%mass(k,i)
+                End If
+              End If
+
+            End If
+          Else
+            If (dV <0) Then
+              If (fox_b(1) .And. (.Not. fox_f(1))) Then
+                mox_b(1)=redox_data%mass(k,i)
+                fox_b(1)=.False.  
+              End If
+              If (fox_b(2) .And. (.Not. fox_f(2))) Then
+                mox_b(2)=redox_data%mass(k,i)
+                fox_b(2)=.False.  
+              End If
+
+              ! Red
+              If ((eqcm_data%voltage_range%value(2) >= redox_data%voltage(k,i)) .And. fred_b(1)) Then
+                mred_b(1)=redox_data%mass(k,i)
+                fred_b(1)=.False.      
+              End If
+              If ((eqcm_data%voltage_range%value(1) > redox_data%voltage(k,i)) .And. fred_b(2)) Then
+                mred_b(2)=redox_data%mass(k-1,i)
+                fred_b(2)=.False.      
+              End If
+              If ((dVfw>0.0_wp .Or. (k+1 == redox_data%points(i))) .And. fred_b(2)) Then
+                mred_b(2)=redox_data%mass(k+1,i)
+                fred_b(2)=.False.      
+              End If         
+
+            Else If (dV>0) Then
+              If ((eqcm_data%voltage_range%value(1) <= redox_data%voltage(k,i)) .And. fred_f(1) .And. (.Not. fred_b(1))) Then
+                mred_f(1)=redox_data%mass(k,i)
+                fred_f(1)=.False.  
+              End If
+              If ((eqcm_data%voltage_range%value(2) < redox_data%voltage(k,i)) .And. fred_f(2) .And. (.Not. fred_b(2))) Then
+                mred_f(2)=redox_data%mass(k-1,i)
+                fred_f(2)=.False.  
+              End If
+              If (k+1==redox_data%points(i)) Then
+                If (fred_f(2)) Then
+                  mred_f(2)=redox_data%mass(k,i)
+                End If
+                If (fred_f(1)) Then
+                  mred_f(1)=redox_data%mass(k,i)
+                End If        
+              End If
+            End If
+          End If
+          k=k+1
+        End Do
+
+        redox_data%DM_ox(i)= (mox_f(2)-mox_f(1))+(mox_b(2)-mox_b(1))
+        redox_data%DM_red(i)= (mred_f(2)-mred_f(1))+(mred_b(2)-mred_b(1))
+
       End Do
 
-      Do k=1, redox_data%points(i)
-         If (eqcm_data%scan_sweep_ref=='negative') Then
-           If (redox_data%current(k,i)<=0) Then
-             redox_data%M_red(k,i)=(redox_data%mass(k,i)-redox_data%mass(1,i))  
-           Else
-             redox_data%M_ox(k,i)=(redox_data%mass(k,i)-mass_limit)
-           EndIf
-         End If
-      End Do
-
-      
-      If (Abs(mass_limit)<epsilon(mass_limit)) Then
-        Write (message,'(1x,a,i3)') 'Problems to determine the change of mass for cycle ', i
-        Call error_stop(message)   
-      End If 
-  
-      If (eqcm_data%scan_sweep_ref=='negative') Then
-        redox_data%DM_red(i)=     (mass_limit-redox_data%mass(1,i))
-        redox_data%DM_ox(i) =     (redox_data%mass(redox_data%points(i),i)-mass_limit) 
-        redox_data%DM_residual(i)=redox_data%DM_red(i)+redox_data%DM_ox(i)
-        If (i== 1) Then
-          redox_data%DM_half(i)=redox_data%DM_red(i) 
-        Else
-          redox_data%DM_half(i)=redox_data%DM_red(i)+redox_data%DM_residual(i-1)
-          redox_data%DM_residual(i)=redox_data%DM_residual(i)+redox_data%DM_residual(i-1) 
-        End If
-      Else If (eqcm_data%scan_sweep_ref=='positive') Then
-        redox_data%DM_red(i)=(redox_data%mass(redox_data%points(i),i)-mass_limit)
-        redox_data%DM_ox(i) =(mass_limit-redox_data%mass(1,i))
-        redox_data%DM_residual(i)=redox_data%DM_ox(i)+redox_data%DM_red(i)
-        If (i== 1) Then
-          redox_data%DM_half(i)=redox_data%DM_ox(i) 
-        Else
-          redox_data%DM_half(i)=redox_data%DM_ox(i)+redox_data%DM_residual(i-1)
-          redox_data%DM_residual(i)=redox_data%DM_residual(i)+redox_data%DM_residual(i-1) 
-        End If
-      End If
-    End Do    
+    End If
 
   End Subroutine extract_Dmass
 

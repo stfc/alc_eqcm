@@ -33,7 +33,7 @@ if(WITH_TESTING)
   macro (do_test arg)
     # Look for the .tar file to perform the testing
     if (EXISTS ${CMAKE_SOURCE_DIR}/CI-tests/${arg}.tar)
-      message(STATUS "Test file ${arg}.tar found")
+      message(STATUS "Test file ${arg}.tar unpacked")
     else()
       message(FATAL_ERROR "Missing ${arg}.tar test")
     endif()
@@ -49,6 +49,7 @@ if(WITH_TESTING)
     execute_process(COMMAND ${CMAKE_COMMAND} -E tar xvf "${arg}.tar"  WORKING_DIRECTORY ${TEST_REF_PATH} OUTPUT_QUIET)
     execute_process(COMMAND rm "${arg}.tar"  WORKING_DIRECTORY ${TEST_NEW_PATH} OUTPUT_QUIET)
     execute_process(COMMAND rm "${arg}.tar"  WORKING_DIRECTORY ${TEST_REF_PATH} OUTPUT_QUIET)
+    execute_process(COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/clean_data.sh  WORKING_DIRECTORY ${TEST_NEW_PATH} OUTPUT_QUIET)
     # Define the test
     add_test(NAME ${arg} COMMAND bash ${CMAKE_SOURCE_DIR}/tools/launch-test.sh "${alc_eqcm}" ${TEST_REF_PATH} WORKING_DIRECTORY ${TEST_NEW_PATH})
   endmacro (do_test)
@@ -56,7 +57,7 @@ if(WITH_TESTING)
   # Name executable + whole path for execution
   set(alc_eqcm "${CMAKE_BINARY_DIR}/bin/${target_name}")
 
-  foreach(test RANGE 1 63 1)
+  foreach(test RANGE 1 71 1)
     do_test("test${test}")
   endforeach()
 

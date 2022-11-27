@@ -39,7 +39,7 @@ Module settings
                                 refresh_out_eqcm
   Use fft,               Only : fft_type
   Use filtering,         Only : filter_type
-  Use hpc_setup,         Only : hpc_type, &
+  Use hpc,               Only : hpc_type, &
                                 check_hpc_settings
   Use numprec,           Only : wi, &
                                 wp
@@ -47,8 +47,10 @@ Module settings
                                 check_for_rubbish, &
                                 get_word_length
   Use sauerbrey,         Only : sauer_type
-  Use simulation_setup,  Only : check_simulation_settings     
-  Use simulation_tools,  Only : simul_type
+  Use simulation_output, Only : check_simulation_settings     
+  Use simulation_setup,  Only : max_number_boltzmann_ions, &
+                                simul_type,&
+                                species_list 
   Use system,            Only : system_type
   Use stoichiometry,     Only : stoich_type, &
                                 check_components_species,&
@@ -2858,6 +2860,23 @@ Contains
         Call simulation_data%init_input_motion_variables()
         Call read_motion_settings(iunit, simulation_data)
 
+      ! Solvation 
+      Else If (word(1:length) == '&solvation') Then
+        Read (iunit, Fmt=*, iostat=io) word
+        Call set_read_status(word, io, simulation_data%solvation%info%fread, simulation_data%solvation%info%fail)
+        simulation_data%solvation%info%stat = .True.
+        Call simulation_data%init_input_solvation_variables()
+        Call read_solvation_directives(iunit, simulation_data)
+
+        
+      ! Poisson-Boltzmann 
+      Else If (word(1:length) == '&electrolyte') Then
+        Read (iunit, Fmt=*, iostat=io) word
+        Call set_read_status(word, io, simulation_data%electrolyte%info%fread, simulation_data%electrolyte%info%fail)
+        simulation_data%electrolyte%info%stat = .True.
+        Call simulation_data%init_input_electrolyte_variables()
+        Call read_electrolyte_directives(iunit, simulation_data)
+        
       ! Extra directives
       Else If (word(1:length) == '&extra_directives') Then
         Read (iunit, Fmt=*, iostat=io) word
@@ -2930,7 +2949,562 @@ Contains
 
   End Subroutine read_extra_directives
 
+  Subroutine read_electrolyte_directives(iunit, T)
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    ! Subroutine to read directives from &electrolyte
+    !
+    ! author    - i.scivetti September 2021
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    Integer(Kind=wi),  Intent(In   ) :: iunit
+    Type(simul_type),  Intent(InOut) :: T
 
+    Character(Len=256) :: word
+    Integer(Kind=wi)   :: length, io
+ 
+    Character(Len=256)  :: message
+    Character(Len=265)  :: set_error
+
+    set_error = '***ERROR in &electrolyte -'
+
+    Do
+      Read (iunit, Fmt=*, iostat=io) word
+      If (io /= 0) Then
+        Write (message,'(2(1x,a))') Trim(set_error), 'It appears the block has not been closed correctly. Use&
+                                  & "&end_electrolyte" to close the block. Check if directives are set correctly.'         
+        Call error_stop(message) 
+      End If  
+      Call get_word_length(word,length)
+      Call capital_to_lower_case(word)
+      If (Trim(word)=='&end_electrolyte') Then
+        Exit
+      End If
+      Call check_for_rubbish(iunit, '&electrolyte')
+
+      If (word(1:1) == '#' .Or. word(1:3) == '   ') Then
+      ! Do nothing if line is a comment of we have an empty line
+      Read (iunit, Fmt=*, iostat=io) word
+
+      Else If (word(1:length) == 'solver') Then 
+        Read (iunit, Fmt=*, iostat=io) word, T%electrolyte%solver%type
+        Call set_read_status(word, io, T%electrolyte%solver%fread, T%electrolyte%solver%fail, T%electrolyte%solver%type)
+
+      Else If (word(1:length) == 'boltzmann_temperature') Then
+        Read (iunit, Fmt=*, iostat=io) word, T%electrolyte%boltzmann_temp%value, T%electrolyte%boltzmann_temp%units
+        Call set_read_status(word, io, T%electrolyte%boltzmann_temp%fread, T%electrolyte%boltzmann_temp%fail)
+        Call capital_to_lower_case(T%electrolyte%boltzmann_temp%units)
+
+      Else If (word(1:length) == 'steric_isodensity') Then
+        Read (iunit, Fmt=*, iostat=io) word, T%electrolyte%steric_isodensity%value
+        Call set_read_status(word, io, T%electrolyte%steric_isodensity%fread, T%electrolyte%steric_isodensity%fail)
+        Call capital_to_lower_case(T%electrolyte%steric_isodensity%units)
+
+      Else If (word(1:length) == 'steric_smearing') Then
+        Read (iunit, Fmt=*, iostat=io) word, T%electrolyte%steric_smearing%value, T%electrolyte%steric_smearing%units
+        Call set_read_status(word, io, T%electrolyte%steric_smearing%fread, T%electrolyte%steric_smearing%fail)
+        Call capital_to_lower_case(T%electrolyte%steric_smearing%units)
+       
+      Else If (word(1:length) == 'capping') Then
+        Read (iunit, Fmt=*, iostat=io) word, T%electrolyte%capping%value
+        Call set_read_status(word, io, T%electrolyte%capping%fread, T%electrolyte%capping%fail)
+        Call capital_to_lower_case(T%electrolyte%capping%units)
+
+      Else If (word(1:length) == 'neutral_scheme') Then 
+        Read (iunit, Fmt=*, iostat=io) word, T%electrolyte%neutral_scheme%type
+        Call set_read_status(word, io, T%electrolyte%neutral_scheme%fread, T%electrolyte%neutral_scheme%fail,&
+        T%electrolyte%neutral_scheme%type)
+
+      Else If (word(1:length) == 'steric_potential') Then 
+        Read (iunit, Fmt=*, iostat=io) word, T%electrolyte%steric_potential%type
+        Call set_read_status(word, io, T%electrolyte%steric_potential%fread, T%electrolyte%steric_potential%fail,&
+        T%electrolyte%steric_potential%type)
+        
+      Else If (word(1:length) == '&boltzmann_ions') Then 
+        Read (iunit, Fmt=*, iostat=io) word
+        Call set_read_status(word, io, T%electrolyte%boltzmann_ions_info%fread, T%electrolyte%boltzmann_ions_info%fail)
+        T%electrolyte%boltzmann_ions_info%stat = .True.
+        ! Read Hubbard corrections
+        Call read_boltzmann_ions(iunit, T)
+
+      Else If (word(1:length) == '&solvent_radii') Then
+        Read (iunit, Fmt=*, iostat=io) word
+        Call set_read_status(word, io, T%electrolyte%solvent_radii_info%fread, T%electrolyte%solvent_radii_info%fail)
+        T%electrolyte%solvent_radii_info%stat = .True.
+        Call read_species_list(iunit, T%total_tags, T%electrolyte%solvent_radii, 'solvent_radii', '&electrolyte')
+        
+      Else
+        Write (message,'(1x,5a)') Trim(set_error), ' Directive "', Trim(word), '" is not recognised as a valid motion settings.',&
+                                & ' See manual. Have you properly closed the block with "&end_electrolyte"?'
+        Call error_stop(message)
+      End If
+
+     End Do
+
+  End Subroutine read_electrolyte_directives 
+
+  
+  Subroutine read_boltzmann_ions(iunit, simulation_data)
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    ! Subroutine to read the specification for boltzmann ions 
+    !
+    ! author    - i.scivetti Sept 2022
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    Integer(Kind=wi),  Intent(In   ) :: iunit
+    Type(simul_type),  Intent(InOut) :: simulation_data
+
+    Integer(Kind=wi) :: io, i, j, k, nions
+    Character(Len=256)  :: messages(11), word
+    Character(Len=64 )  :: set_error
+    Logical  :: endblock, pass
+    Logical  :: header(4), error_duplication
+    Character(Len=64 )  :: field_ref(3)
+    
+
+    set_error = '***ERROR in &boltzmann_ions (inside &electrolyte):'
+    Write (messages(1),'(a)') set_error
+
+    header=.False.
+    simulation_data%electrolyte%set_necs_shift=.False.
+    error_duplication=.False.
+    field_ref(1)='tags'
+    field_ref(2)='charge'
+    field_ref(3)='conc'
+        
+    Write (messages(2),'(1x,a)')    'The correct structure must be:'
+    Write (messages(3),'(1x,a)')    '&boltzmann_ions'
+    Write (messages(4),'(1x,a)')    '  number_boltzmann_ions  Nion'
+    Write (messages(5),'(1x,a)')    '  tags         tg_1    tg_2    ....  tg_Nions  (Compulsory)'
+    Write (messages(6),'(1x,a)')    '  charge       Q_tg1   Q_tg2   .... Q_tgNions  (Compulsory)'
+    Write (messages(7),'(1x,a)')    '  conc         C_tg1   C_tg2   .... C_tgNions  (Compulsory)'
+    Write (messages(8),'(1x,a)')    '  necs_shift   x_tg1   x_tg2   .... x_tgNions  (only needed is&
+                                    & "neutral_scheme" is set to counterions_fixed)'
+    Write (messages(9),'(1x,a)')    '&end_boltzmann_ions'
+    Write (messages(10),'(1x,a)')   'where in this case Nions is the value defined by "number_boltzmann_ions"' 
+    Write (messages(11),'(1x,a)')   'See manual for details'
+    
+    pass=.True.
+    Do While (pass)
+      Read (iunit, Fmt=*, iostat=io) word
+      Call check_end(io, '&boltzmann_ions (inside &electrolyte)')
+      If (word(1:1)/='#') Then
+        If (word(1:1)/='&') Then
+          Call check_for_rubbish(iunit, '&boltzmann_ions (inside &electrolyte)')
+          Call capital_to_lower_case(word)
+          If (Trim(word) /= 'number_boltzmann_ions') Then
+            Write (messages(2),'(1x,a)') 'The first directive within &boltzmann_ions must be "number_boltzmann_ions"'
+            Call info(messages, 2)
+            Call error_stop(' ') 
+          Else
+            Read (iunit, Fmt=*, iostat=io) word, simulation_data%electrolyte%number_boltzmann_ions
+            If (io /= 0 .Or. simulation_data%electrolyte%number_boltzmann_ions < 2) Then
+              Write (messages(2),'(1x,a)') 'Problems to read directives "number_boltzmann_ions"'
+              Call info(messages, 2)
+              Call error_stop(' ') 
+            End If
+            If (simulation_data%electrolyte%number_boltzmann_ions > max_number_boltzmann_ions) Then
+              Write (messages(2),'(1x,a,i2)') 'Directives "number_boltzmann_ions" is larger than the max_intra allowed&
+                                          & number of Boltzmann ions = ', max_number_boltzmann_ions
+              Call info(messages, 2)
+              Call error_stop(' ') 
+            End If
+            pass=.False.
+          End If
+        Else
+           Call info(messages, 11)
+           Call error_stop(' ') 
+        End If
+      End If  
+    End Do
+
+    nions=simulation_data%electrolyte%number_boltzmann_ions    
+
+    i=1
+    pass=.True.
+    Do While (i <= 4 .And. pass)
+      Read (iunit, Fmt=*, iostat=io) word
+      Call check_end(io, '&boltzmann_ions (inside &electrolyte)')
+      If (word(1:1)/='#') Then
+        If (word(1:1)/='&') Then
+          Call check_for_rubbish(iunit, '&boltzmann_ions (inside &electrolyte)')
+          Call capital_to_lower_case(word) 
+
+          If (Trim(word)=='tags') Then
+            If (.Not. header(1)) Then 
+              i=i+1
+              Read (iunit, Fmt=*, iostat=io) word, (simulation_data%electrolyte%boltzmann_ions(j)%tag, j = 1, nions)
+              If (io /= 0) Then
+                Write (messages(2),'(1x,a)') 'Problems to read tags for atoms'
+                Call info(messages, 2)
+                Call error_stop(' ')
+              End If
+              Do j=1, nions-1
+                 Do k=j+1, nions
+                   If (Trim(simulation_data%electrolyte%boltzmann_ions(j)%tag)==&
+                       Trim(simulation_data%electrolyte%boltzmann_ions(k)%tag)) Then
+                     Write (messages(2),'(3(1x,a))') 'Tag', Trim(simulation_data%electrolyte%boltzmann_ions(j)%tag),&
+                                                    & 'is repeated in the list!'
+                     Write (messages(3),'((1x,a))') 'All tags for the components of the species must be declared,&
+                                                    & each tag only once'
+                     Call info(messages, 3)
+                     Call error_stop(' ')
+                   End If
+                 End Do
+              End Do  
+              header(1)=.True.
+            Else
+              error_duplication=.True.
+            End If
+          Else If (Trim(word)=='charge') Then
+            If (.Not. header(2)) Then 
+              i=i+1
+              Read (iunit, Fmt=*, iostat=io) word, (simulation_data%electrolyte%boltzmann_ions(j)%charge, j = 1, nions)
+              If (io /= 0) Then
+                Write (messages(2),'(1x,a)') 'Problems to read the "charge" values for tags. Please check'
+                Call info(messages, 2)
+                Call error_stop(' ')
+              End If  
+              header(2)=.True.        
+            Else
+              error_duplication=.True.
+            End If
+          Else If (Trim(word)=='conc') Then
+            If (.Not. header(3)) Then 
+              i=i+1
+              Read (iunit, Fmt=*, iostat=io) word, (simulation_data%electrolyte%boltzmann_ions(j)%conc, j = 1, nions)
+              If (io /= 0) Then
+                Write (messages(2),'(1x,a)') 'Problems to read the "conc" (which orbital to apply the correction)&
+                                           & for each tags. Please check'
+                Call info(messages, 2)
+                Call error_stop(' ')
+              End If  
+              header(3)=.True.        
+            Else
+              error_duplication=.True.
+            End If
+          Else If (Trim(word)=='necs_shift') Then
+            If (.Not. header(4)) Then 
+              simulation_data%electrolyte%set_necs_shift=.True.
+              i=i+1
+              Read (iunit, Fmt=*, iostat=io) word, (simulation_data%electrolyte%boltzmann_ions(j)%necs_shift, j = 1, nions)
+              If (io /= 0) Then
+                Write (messages(2),'(1x,a)') 'Problems to read the "necs_shift" values for tags. Please check'
+                Call info(messages, 2)
+                Call error_stop(' ')
+              End If  
+              header(4)=.True.        
+            Else
+              error_duplication=.True.
+            End If
+          Else
+              Write (messages(2),'(1x,3a)') 'Wrong descriptor "', Trim(word),&
+                                         &'". Valid options are: "tags", "charge", "conc" and "necs_shift".&
+                                         & Please refer to the manual.'
+              Call info(messages, 2)
+              Call error_stop(' ')
+          End If
+        Else
+
+          If (i<4) Then
+            Call info(messages, 11)
+            Call error_stop(' ')
+          Else
+            i=i+1
+          End If
+
+          If (Trim(word)=='&end_boltzmann_ions') Then
+            Backspace iunit
+            pass=.False.
+          End If
+          
+        End If
+      End If
+      If (error_duplication) Then
+        Write (messages(2),'(1x,3a)') 'Descriptor "', Trim(word), '" is duplicated within &boltzmann_ions'
+        Call info(messages, 2)
+        Call error_stop(' ')
+      End If
+    End Do 
+
+    Do i=1,3
+     If(.Not. header(i)) Then
+       Write (messages(2),'(3a)') 'Compulsory field "', Trim(field_ref(i)), '" is missing.' 
+       Call info(messages,2)
+       Call error_stop(' ')
+     End If 
+    End Do
+    
+    endblock=.False.
+    Do While (.Not. endblock)
+      Read (iunit, Fmt=*, iostat=io) word
+      Call check_end(io, '&boltzmann_ions (inside &dft_settings)')
+      Call capital_to_lower_case(word)
+      If (word /= '&end_boltzmann_ions') Then
+        If (word(1:1) /= '#') Then
+            Write (messages(2),'(3a)') 'Valid descriptors have already been defined. Directive "',&
+                                    & Trim(word), '" is not valid. Block must be&
+                                    & closed with sentence &end_boltzmann_ions' 
+            Call info(messages,2)
+            Call error_stop(' ')
+        End If
+      Else
+        endblock=.True.
+      End If
+    End Do
+
+  End Subroutine read_boltzmann_ions
+  
+
+  Subroutine read_solvation_directives(iunit, T)
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    ! Subroutine to read directives from &solvation
+    !
+    ! author    - i.scivetti August 2021
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    Integer(Kind=wi),  Intent(In   ) :: iunit
+    Type(simul_type),  Intent(InOut) :: T
+
+    Character(Len=256) :: word
+    Integer(Kind=wi)   :: length, io
+ 
+    Integer             :: j
+    Character(Len=256)  :: message
+    Character(Len=265)  :: set_error
+
+    set_error = '***ERROR in &solvation -'
+
+    Do
+      Read (iunit, Fmt=*, iostat=io) word
+      If (io /= 0) Then
+        Write (message,'(2(1x,a))') Trim(set_error), 'It appears the block has not been closed correctly. Use&
+                                  & "&end_solvation" to close the block. Check if directives are set correctly.'         
+        Call error_stop(message) 
+      End If  
+      Call get_word_length(word,length)
+      Call capital_to_lower_case(word)
+      If (Trim(word)=='&end_solvation') Then
+        Exit
+      End If
+      Call check_for_rubbish(iunit, '&solvation')
+
+      If (word(1:1) == '#' .Or. word(1:3) == '   ') Then
+      ! Do nothing if line is a comment of we have an empty line
+      Read (iunit, Fmt=*, iostat=io) word
+
+      Else If (word(1:length) == 'cavity_model') Then 
+        Read (iunit, Fmt=*, iostat=io) word, T%solvation%cavity_model%type
+        Call set_read_status(word, io, T%solvation%cavity_model%fread, T%solvation%cavity_model%fail,&
+                             T%solvation%cavity_model%type)
+
+      Else If (word(1:length) == 'in_vacuum_first') Then 
+        Read (iunit, Fmt=*, iostat=io) word, T%solvation%in_vacuum_first%stat
+        Call set_read_status(word, io,  T%solvation%in_vacuum_first%fread,  T%solvation%in_vacuum_first%fail)
+        
+      Else If (word(1:length) == 'dielectric_function') Then 
+        Read (iunit, Fmt=*, iostat=io) word, T%solvation%dielectric_function%type
+        Call set_read_status(word, io, T%solvation%dielectric_function%fread, T%solvation%dielectric_function%fail,&
+                              T%solvation%dielectric_function%type)
+
+       Else If (word(1:length) == 'smear_ion_width') Then 
+         Read (iunit, Fmt=*, iostat=io) word, T%solvation%smear_ion_width%value, T%solvation%smear_ion_width%units
+         Call set_read_status(word, io, T%solvation%smear_ion_width%fread, T%solvation%smear_ion_width%fail)
+         Call capital_to_lower_case(T%solvation%smear_ion_width%units)
+         
+       Else If (word(1:length) == 'density_threshold') Then 
+         Read (iunit, Fmt=*, iostat=io) word, T%solvation%density_threshold%value
+         Call set_read_status(word, io, T%solvation%density_threshold%fread, T%solvation%density_threshold%fail)
+                              
+       Else If (word(1:length) == 'beta') Then 
+         Read (iunit, Fmt=*, iostat=io) word, T%solvation%beta%value
+         Call set_read_status(word, io, T%solvation%beta%fread, T%solvation%beta%fail)
+                              
+       Else If (word(1:length) == 'permittivity_bulk') Then 
+         Read (iunit, Fmt=*, iostat=io) word, T%solvation%permittivity_bulk%value
+         Call set_read_status(word, io, T%solvation%permittivity_bulk%fread, T%solvation%permittivity_bulk%fail)
+
+       Else If (word(1:length) == 'density_min_threshold') Then 
+         Read (iunit, Fmt=*, iostat=io) word, T%solvation%density_min_threshold%value
+         Call set_read_status(word, io, T%solvation%density_min_threshold%fread, T%solvation%density_min_threshold%fail)
+
+       Else If (word(1:length) == 'density_max_threshold') Then 
+         Read (iunit, Fmt=*, iostat=io) word, T%solvation%density_max_threshold%value
+         Call set_read_status(word, io, T%solvation%density_max_threshold%fread, T%solvation%density_max_threshold%fail)
+
+       Else If (word(1:length) == 'soft_sphere_scale') Then 
+         Read (iunit, Fmt=*, iostat=io) word, T%solvation%soft_sphere_scale%value
+         Call set_read_status(word, io, T%solvation%soft_sphere_scale%fread, T%solvation%soft_sphere_scale%fail)
+
+       Else If (word(1:length) == 'soft_sphere_delta') Then 
+         Read (iunit, Fmt=*, iostat=io) word, T%solvation%soft_sphere_delta%value
+         Call set_read_status(word, io, T%solvation%soft_sphere_delta%fread, T%solvation%soft_sphere_delta%fail)
+         
+       Else If (word(1:length) == '&soft_sphere_radii') Then
+         Read (iunit, Fmt=*, iostat=io) word
+         Call set_read_status(word, io, T%solvation%soft_radii_info%fread, T%solvation%soft_radii_info%fail)
+         T%solvation%soft_radii_info%stat = .True.
+         Call read_species_list(iunit, T%total_tags, T%solvation%soft_radii, 'soft_sphere_radii', '&solvation')
+
+       Else If (word(1:length) == 'apolar_terms') Then 
+         Read (iunit, Fmt=*, iostat=io) word, T%solvation%apolar_terms%type
+         Call set_read_status(word, io, T%solvation%apolar_terms%fread, T%solvation%apolar_terms%fail,&
+                              T%solvation%apolar_terms%type)
+
+       Else If (word(1:length) == 'sasa_definition') Then 
+         Read (iunit, Fmt=*, iostat=io) word, T%solvation%sasa_definition%type
+         Call set_read_status(word, io, T%solvation%sasa_definition%fread, T%solvation%sasa_definition%fail,&
+                             T%solvation%sasa_definition%type)
+         
+       Else If (word(1:length) == 'apolar_scaling') Then 
+         Read (iunit, Fmt=*, iostat=io) word, T%solvation%apolar_scaling%value
+         Call set_read_status(word, io, T%solvation%apolar_scaling%fread, T%solvation%apolar_scaling%fail)
+         
+       Else If (word(1:length) == 'solvent_surface_tension') Then
+         Read (iunit, Fmt=*, iostat=io) word, T%solvation%surf_tension%value(1), (T%solvation%surf_tension%units(j), j=1,2)
+         Call set_read_status(word, io, T%solvation%surf_tension%fread, T%solvation%surf_tension%fail)
+         Call capital_to_lower_case(T%solvation%surf_tension%units(1))
+         Call capital_to_lower_case(T%solvation%surf_tension%units(2))
+       
+       Else If (word(1:length) == 'solvent_pressure') Then
+         Read (iunit, Fmt=*, iostat=io) word, T%solvation%solvent_pressure%value, T%solvation%solvent_pressure%units
+         Call set_read_status(word, io, T%solvation%solvent_pressure%fread, T%solvation%solvent_pressure%fail)
+         Call capital_to_lower_case(T%solvation%solvent_pressure%units)
+       
+        Else
+        Write (message,'(1x,5a)') Trim(set_error), ' Directive "', Trim(word), '" is not recognised as a valid motion settings.',&
+                                & ' See manual. Have you properly closed the block with "&end_solvation"?'
+        Call error_stop(message)
+      End If
+
+     End Do
+
+  End Subroutine read_solvation_directives 
+
+  Subroutine read_species_list(iunit, total_tags, quantity, sub_block, inblock)
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    ! Subroutine to read values for species in a block. The information read and stored
+    ! depends on the input "sub_block". 
+    !
+    ! This subroutine generalises and replaces read_mass
+    !
+    ! author    - i.scivetti August 2022
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    Integer(Kind=wi),   Intent(In   ) :: iunit
+    Integer(Kind=wi),   Intent(In   ) :: total_tags
+    Type(species_list), Intent(InOut) :: quantity(total_tags)
+    Character(Len=*),   Intent(In   ) :: sub_block
+    Character(Len=*),   Intent(In   ) :: inblock
+    
+
+    Integer(Kind=wi) :: io, i, j, k
+    Character(Len=256)  :: messages(8), word
+    Character(Len=64 )  :: set_error
+    Logical  :: endblock
+    Logical  :: header(2), error_duplication
+    
+    set_error = '***ERROR in sub-block &'//Trim(sub_block)//' (inside '//Trim(inblock)//'):'
+    Write (messages(1),'(a)') set_error
+
+    header=.False.
+    error_duplication=.False.
+
+    i=1
+
+    Do While (i <= 2)
+      Read (iunit, Fmt=*, iostat=io) word
+      Call check_end(io, '&'//Trim(sub_block)//' (inside '//Trim(inblock)//')')
+      If (word(1:1)/='#') Then
+        If (word(1:1)/='&') Then
+          Call check_for_rubbish(iunit, '&'//Trim(sub_block)//' (inside '//Trim(inblock)//')')
+          Call capital_to_lower_case(word) 
+          If (Trim(word)=='tags') Then
+            If (.Not. header(1)) Then 
+              i=i+1
+              Read (iunit, Fmt=*, iostat=io) word, (quantity(j)%tag, j = 1, total_tags)
+              If (io /= 0) Then
+                Write (messages(2),'(1x,a)') 'Problems to read tags for atoms'
+                Call info(messages, 2)
+                Call error_stop(' ')
+              End If
+              Do j=1, total_tags-1
+                 Do k=j+1, total_tags
+                   If (Trim(quantity(j)%tag)==Trim(quantity(k)%tag)) Then
+                     Write (messages(2),'(3(1x,a))') 'Tag', Trim(quantity(j)%tag),&
+                                                  & 'is repeated in the list!'
+                     Write (messages(3),'((1x,a))') 'All tags for the components of the species must be declared,&
+                                                   & each tag only once'
+                     Call info(messages, 3)
+                     Call error_stop(' ')
+                   End If
+                 End Do
+              End Do  
+              header(1)=.True.
+            Else
+              error_duplication=.True.
+            End If
+          Else If (Trim(word)=='values') Then
+            If (.Not. header(2)) Then 
+              i=i+1
+              Read (iunit,Fmt=*,iostat=io) word, (quantity(j)%value, j=1, total_tags)
+              If (io /= 0) Then
+                Write (messages(2),'(1x,a)') 'Problems to read masses values for the defined tags. Please check if tags&
+                                            & are consistent with those defined in "&Block_Species_Components".'
+                Call info(messages, 2)
+                Call error_stop(' ')
+              End If  
+              header(2)=.True.        
+            Else
+              error_duplication=.True.
+            End If
+          Else
+            Write (messages(2),'(1x,3a)') 'Wrong descriptor "', Trim(word),'". Valid options are "tags" and "values"&
+                                         & Please refer to the manual.'
+            Call info(messages, 2)
+            Call error_stop(' ')
+          End If
+        Else
+          Write (messages(2),'(1x,a)')      'The correct structure must be:'
+          Write (messages(3),'(1x,a)')      '&'//Trim(sub_block)
+          Write (messages(4),'(1x,a)')      '  tags      tg1        tg2      tg3    ....   tgNsp'
+          If (Trim(sub_block)=='masses') Then
+            Write (messages(5),'(1x,a)')      '  values  mass_tg1  mass_tg2  mass_tg3 .... mass_tgNsp'
+          Else
+            Write (messages(5),'(1x,a)')      '  values  R_tg1      R_tg2    R_tg3  ....   R_tgNsp'
+          End If  
+          Write (messages(6),'(1x,a)')      '&end_'//Trim(sub_block)
+          Write (messages(7),'(1x,a,i3,a)') 'where in this case Nsp = ', total_tags,&
+                                          & ', which corresponds to the number of tags defined in "&Block_Species_Components".'
+          Write (messages(8),'(1x,a)')      'See manual for details'
+          Call info(messages, 8)
+          Call error_stop(' ')
+        End If
+      End If
+      If (error_duplication) Then
+        Write (messages(2),'(1x,3a)') 'Descriptor "', Trim(word), '" is duplicated within &'//Trim(sub_block)
+        Call info(messages, 2)
+        Call error_stop(' ')
+      End If
+    End Do 
+
+    endblock=.False.
+
+    Do While (.Not. endblock)
+      Read (iunit, Fmt=*, iostat=io) word
+      Call check_end(io, '&'//Trim(sub_block)//' (inside '//Trim(inblock)//')')
+      Call capital_to_lower_case(word)
+      If (word /= Trim('&end_'//Trim(sub_block))) Then
+        If (word(1:1) /= '#') Then
+            Write (messages(2),'(3a)') 'Descriptors "tags" and "values" have already been defined. Directive "',&
+                                    & Trim(word), '" is not valid. Block must be&
+                                    & closed with sentence &end_'//Trim(sub_block) 
+            Call info(messages,2)
+            Call error_stop(' ')
+        End If
+      Else
+        endblock=.True.
+      End If
+    End Do
+
+  End Subroutine read_species_list
+  
+  
   Subroutine read_motion_settings(iunit, T)
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     ! Subroutine to read directives from &motion_settings
@@ -3032,7 +3606,7 @@ Contains
         Call set_read_status(word, io, T%motion%mass_info%fread, T%motion%mass_info%fail)
         T%motion%mass_info%stat = .True.
         !Read masses from block &mass
-        Call read_masses(iunit, T)
+        Call read_species_list(iunit, T%total_tags, T%motion%mass, 'masses', '&motion')
 
       Else
         Write (message,'(1x,5a)') Trim(set_error), ' Directive "', Trim(word), '" is not recognised as a valid motion settings.',&
@@ -3044,122 +3618,6 @@ Contains
 
   End Subroutine read_motion_settings
 
-  Subroutine read_masses(iunit, simulation_data)
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    ! Subroutine to read the masses for each atomic tags (this is strictly needed for 
-    ! MD simulations with isotopes)
-    !
-    ! author    - i.scivetti May 2021
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    Integer(Kind=wi),   Intent(In   ) :: iunit
-    Type(simul_type),   Intent(InOut) :: simulation_data
-
-    Integer(Kind=wi) :: io, i, j, k
-    Character(Len=256)  :: messages(8), word
-    Character(Len=64 )  :: set_error
-    Logical  :: endblock
-    Logical  :: header(2), error_duplication
-
-    set_error = '***ERROR in &masses (inside &motion_settings):'
-    Write (messages(1),'(a)') set_error
-
-    header=.False.
-    error_duplication=.False.
-
-    i=1
-
-    Do While (i <= 2)
-      Read (iunit, Fmt=*, iostat=io) word
-      Call check_end(io, '&masses (inside &motion_settings)')
-      If (word(1:1)/='#') Then
-        If (word(1:1)/='&') Then
-          Call check_for_rubbish(iunit, '&masses (inside &motion_settings)')
-          Call capital_to_lower_case(word) 
-          If (Trim(word)=='tags') Then
-            If (.Not. header(1)) Then 
-              i=i+1
-              Read (iunit, Fmt=*, iostat=io) word, (simulation_data%motion%mass(j)%tag, j = 1, simulation_data%total_tags)
-              If (io /= 0) Then
-                Write (messages(2),'(1x,a)') 'Problems to read tags for atoms'
-                Call info(messages, 2)
-                Call error_stop(' ')
-              End If
-              Do j=1, simulation_data%total_tags-1
-                 Do k=j+1, simulation_data%total_tags
-                   If (Trim(simulation_data%motion%mass(j)%tag)==Trim(simulation_data%motion%mass(k)%tag)) Then
-                     Write (messages(2),'(3(1x,a))') 'Tag', Trim(simulation_data%motion%mass(j)%tag),&
-                                                  & 'is repeated in the list!'
-                     Write (messages(3),'((1x,a))') 'All tags for the components of the species must be declared,&
-                                                   & each tag only once'
-                     Call info(messages, 3)
-                     Call error_stop(' ')
-                   End If
-                 End Do
-              End Do  
-              header(1)=.True.
-            Else
-              error_duplication=.True.
-            End If
-          Else If (Trim(word)=='values') Then
-            If (.Not. header(2)) Then 
-              i=i+1
-              Read (iunit,Fmt=*,iostat=io) word, (simulation_data%motion%mass(j)%value, j=1,simulation_data%total_tags)
-              If (io /= 0) Then
-                Write (messages(2),'(1x,a)') 'Problems to read masses values for the defined tags. Please check if tags&
-                                            & are consistent with those defined in "&Block_Species_Components".'
-                Call info(messages, 2)
-                Call error_stop(' ')
-              End If  
-              header(2)=.True.        
-            Else
-              error_duplication=.True.
-            End If
-          Else
-            Write (messages(2),'(1x,3a)') 'Wrong descriptor "', Trim(word),'". Valid options are "tags" and "values"&
-                                         & Please refer to the manual.'
-            Call info(messages, 2)
-            Call error_stop(' ')
-          End If
-        Else
-          Write (messages(2),'(1x,a)')      'The correct structure must be:'
-          Write (messages(3),'(1x,a)')      '&masses'
-          Write (messages(4),'(1x,a)')      '  tags      tg1        tg2      tg3    ....   tgNsp'
-          Write (messages(5),'(1x,a)')      '  values  mass_tg1  mass_tg2  mass_tg3 .... mass_tgNsp'
-          Write (messages(6),'(1x,a)')      '&end_masses'
-          Write (messages(7),'(1x,a,i3,a)') 'where in this case Nsp = ', simulation_data%total_tags,&
-                                          & ', which corresponds to the number of tags defined in "&Block_Species_Components".'
-          Write (messages(8),'(1x,a)')      'See manual for details'
-          Call info(messages, 8)
-          Call error_stop(' ')
-        End If
-      End If
-      If (error_duplication) Then
-        Write (messages(2),'(1x,3a)') 'Descriptor "', Trim(word), '" is duplicated within &masses'
-        Call info(messages, 2)
-        Call error_stop(' ')
-      End If
-    End Do 
-
-    endblock=.False.
-
-    Do While (.Not. endblock)
-      Read (iunit, Fmt=*, iostat=io) word
-      Call check_end(io, '&masses (inside &motion_settings)')
-      Call capital_to_lower_case(word)
-      If (word /= '&end_masses') Then
-        If (word(1:1) /= '#') Then
-            Write (messages(2),'(3a)') 'Descriptors "tags" and "values" have already been defined. Directive "',&
-                                    & Trim(word), '" is not valid. Block must be&
-                                    & closed with sentence &end_masses.' 
-            Call info(messages,2)
-            Call error_stop(' ')
-        End If
-      Else
-        endblock=.True.
-      End If
-    End Do
-
-  End Subroutine read_masses
 
   Subroutine read_dft_settings(iunit, T)
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
