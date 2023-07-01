@@ -8,20 +8,32 @@ Together with the code, we also provide a manual intended to guide the user with
 ## License
 ALC_EQCM redistribution is under the BSD 3-Clause License. Please refer to file [LICENSE](./LICENSE) in the root directory for further details.
 
+## Citing ALC_EQCM
+Please cite the following work in publications making use of ALC_EQCM:
+
+1) Quantitative Resolution of Complex Stoichiometric Changes During Electrochemical Cycling by Density Functional Theory Assisted, Electrochemical Quartz Crystal Microbalance. T-H. Wu; I. Scivetti; J-C. Chen; J-A. Wang; G. Teobaldi, C-C Hu; L.J. Hardwick. ACS Appl. Energy Mater. 3, 4, 3347–3357 (2020), https://doi.org/10.1021/acsaem.9b02386
+
+2) ALC_EQCM: Automated stoichiometric resolution in electrochemistry through Density Functional Theory aided, Electrochemical Quartz Crystal Microbalance. I. Scivetti and G. Teobaldi. Computational Materials Science 218, 111968, (2023), https://doi.org/10.1016/j.commatsci.2022.111968
+
+Both references are provided in bibtex format within the [***biblio-references***](./biblio-references) folder in the root directory.
+
 ## Structure of files and folders
 ALC_EQCM contains the following set of files and folders (in italic-bold):
 
 * [***CI-tests***](./CI-tests): contains all the tests in .tar format for testing purposes. There is also a file called *README.txt* with a brief description for each test.
+* [***biblio-references***](./biblio-references): includes the bibliographic references of the ALC_EQCM code in BibTex format. 
 * [***cmake***](./cmake): contains the specification for the compilation flags depending on the Fortran compiler, including options for debugging.
-* [cmake_building.md](./cmake_building.md): details the steps to build, compile and run tests using the CMake platform.
-* [CMakeList.txt](./CMakeList.txt): sets the framework for code building and testing with CMake.
-* [LICENSE](./LICENSE): conditions for ALC_EQCM license.
 * [***manual***](./manual): folder with the user's manual.
-* README.md: this file .
 * [***scripts***](./scripts): contains scripts for data processing and transformation of atomistic structures with the *.cif* format
 * [***source***](./source): contains the source code. Files have the *.F90* extension
 * [***tools***](./tools): includes all shell files for building, compiling and testing the code automatically.
 * [***tutorial***](./tutorials): contains the input files for the tutorial examples, which are explained in the section 6 of the manual
+* [.gitignore](./.gitignore): instructs Git which file to ignore for development and integration.
+* [CMakeList.txt](./CMakeList.txt): sets the framework for code building and testing with CMake.
+* Jenkinsfile: file with specifications to build and run the testing infrastructure.
+* LICENSE: specification of the BSD 3-Clause License under which ALC_EQCM is registered.
+* README.md: this file.
+* [cmake_building.md](./cmake_building.md): details the steps to build, compile and run tests using the CMake platform.
 
 ## Contributors
  * Ivan Scivetti
@@ -46,8 +58,8 @@ The user must have access to the following software:
 * Make (3.82)  
 * git (2.7.4)  
 The following two softwares are only needed when working with atomic structures in *.cif* format:
-* Python (2.7.12)
-* Atomistic Simulation Environment-ASE (2.1)
+* Python (3.8.10)
+* Atomistic Simulation Environment-ASE (ase-3.23.0b1)
 
 Information in parenthesis indicates the minimum version tested during the development of the code. The specification for the minimum versions is not fully rigorous but indicative, as there could be combinations of other minimum versions that still work. Our tests indicate that versions of Intel compiler older than 16.0.1 exhibit problems and should be avoided.
 

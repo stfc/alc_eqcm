@@ -1,6 +1,6 @@
 # Input directives for mass-calibration
 # Electrodeposition of Ag on Au 
 software  QCM200                  #  Acquisition software (optional)
-Analysis  mass_calibration        #  Filter and print data
-scan_rate 100.0 mV s-1            # Voltage scan rate
-current_offset  .False.           # De-activate offset for EQCM current 
+Analysis  mass_calibration        #  Mass calibration 
+scan_rate 100.0 mV s-1            #  Voltage scan rate
+current_offset  .False.           #  Do not offset CV current

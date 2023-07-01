@@ -1,6 +1,6 @@
 # Input directives for EQCM post-processing and analysis
-software  Metrohm
-Analysis print_EQCM_raw
-V_to_Hz   200.0
-sauerbrey  0.0566 Hz ng-1 cm2
-quartz_freq     5.0 MHz
+software     Metrohm
+Analysis     print_EQCM_raw
+V_to_Hz      200.0                # Convertion factor from V to Hz
+sauerbrey    0.0566 Hz ng-1 cm2   # Sauerbrey factor
+quartz_freq  5.0 MHz              # Quartz crystal frequency

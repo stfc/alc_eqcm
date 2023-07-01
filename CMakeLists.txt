@@ -48,6 +48,7 @@ if(WITH_TESTING)
     execute_process(COMMAND ${CMAKE_COMMAND} -E tar xvf "${arg}.tar"  WORKING_DIRECTORY ${TEST_NEW_PATH} OUTPUT_QUIET)
     execute_process(COMMAND ${CMAKE_COMMAND} -E tar xvf "${arg}.tar"  WORKING_DIRECTORY ${TEST_REF_PATH} OUTPUT_QUIET)
     execute_process(COMMAND rm "${arg}.tar"  WORKING_DIRECTORY ${TEST_NEW_PATH} OUTPUT_QUIET)
+    execute_process(COMMAND sh ${CMAKE_SOURCE_DIR}/scripts/clean_data.sh  WORKING_DIRECTORY ${TEST_NEW_PATH} OUTPUT_QUIET)
     execute_process(COMMAND rm "${arg}.tar"  WORKING_DIRECTORY ${TEST_REF_PATH} OUTPUT_QUIET)
     execute_process(COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/clean_data.sh  WORKING_DIRECTORY ${TEST_NEW_PATH} OUTPUT_QUIET)
     # Define the test
@@ -57,7 +58,7 @@ if(WITH_TESTING)
   # Name executable + whole path for execution
   set(alc_eqcm "${CMAKE_BINARY_DIR}/bin/${target_name}")
 
-  foreach(test RANGE 1 71 1)
+  foreach(test RANGE 1 73 1)
     do_test("test${test}")
   endforeach()
 

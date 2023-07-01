@@ -59,7 +59,8 @@ Program alc_eqcm
                                check_all_settings,&
                                check_feasibility
   Use stoichiometry,     Only: stoich_type, &
-                               stoichometry_analysis
+                               compute_fluxes, &
+                               compute_stoichometry
   Use system,            Only: system_type
   Use unit_output,       Only: info
 
@@ -154,9 +155,11 @@ Implicit None
           Else
             !Analyse collected data 
             Call redox_characterization(files, redox_data, eqcm_data, electrode_data)
-            If (eqcm_data%analysis%type =='stoichiometry' .Or. eqcm_data%analysis%type=='model_cycled_sample') Then
+            If (eqcm_data%analysis%type=='fluxes') Then
+              Call compute_fluxes(files, eqcm_data, electrode_data, redox_data, stoich_data) 
+            Else If (eqcm_data%analysis%type =='stoichiometry' .Or. eqcm_data%analysis%type=='model_cycled_sample') Then
               !Call stoichiometry     
-              Call stoichometry_analysis(files, eqcm_data, electrode_data, redox_data, stoich_data)
+              Call compute_stoichometry(files, eqcm_data, electrode_data, redox_data, stoich_data)
             End If
           End If
         End If

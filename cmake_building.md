@@ -10,8 +10,8 @@ The user must have access to the following software:
 * Make (3.82)  
 * git (2.7.4)  
 The following two softwares are only needed when working with atomic structures in *.cif* format:
-* Python (2.7.12)
-* Atomistic Simulation Environment-ASE (2.1)
+ * Python (3.8.10)
+ * Atomistic Simulation Environment-ASE (ase-3.23.0b1)
 
 Information in parenthesis indicates the minimum version tested during the development of the code. The specification for the minimum versions is not fully rigorous but indicative, as there could be combinations of other minimum versions that still work. Our tests indicate that versions of Intel compiler older than 16.0.1 exhibit problems and should be avoided.
  

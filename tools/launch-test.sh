@@ -15,7 +15,7 @@
 
     if [ $genfile = "OUT_EQCM" ] ;then
       nl=$(wc -l ${genfile} | awk '{ print $1 }')
-      nappex=12
+      nappex=26
       nbanner=20
       nlow="$((nl - nappex))"
       ntop="$((nlow - nbanner))"
@@ -43,6 +43,8 @@
                          "ANALYSIS_EQCM/CHARACTERIZATION" "ANALYSIS_EQCM/MASS_CALIBRATION" "ANALYSIS_EQCM/ELECTRO_DEPOSITION" \\
                          "ANALYSIS_EQCM/INTERCALATION_OX" "ANALYSIS_EQCM/INTERCALATION_RED" "ANALYSIS_EQCM/MASSOGRAM"\\
                          "ANALYSIS_EQCM/SELECTED_SOLUTIONS" \\
+                         "ANALYSIS_EQCM/MOLE_FLUX" \\
+                         "ANALYSIS_EQCM/IONIC_CURRENT" \\
                          "ATOMISTIC_MODELS/pristine/MODEL_SUMMARY" \\
                          "ATOMISTIC_MODELS/1cycle-oxidation/MODEL_SUMMARY" "ATOMISTIC_MODELS/1cycle-oxidation/model1/MODEL_SUMMARY" \\
                          "ATOMISTIC_MODELS/1cycle-reduction/MODEL_SUMMARY" "ATOMISTIC_MODELS/1cycle-reduction/model1/MODEL_SUMMARY" \\

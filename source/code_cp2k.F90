@@ -107,7 +107,7 @@ Contains
         Write (iunit,'(2x,a)') 'RUN_TYPE   GEO_OPT'
       End If
     End If
-    Write (iunit,'(2x,a)')   'PRINT_LEVEL  MEDIUM' 
+    Write (iunit,'(2x,a)')   'PRINT_LEVEL  LOW' 
     Write (iunit,'(2x,a)')   'WALLTIME     300000' 
     Write (iunit,'(a)')   '&END GLOBAL'
     Write (iunit,'(a)')   ' '
@@ -146,7 +146,14 @@ Contains
     Write (iunit,'(4x,a)') '#==== Self-consistency'
     Write (iunit,'(4x,a)') '&QS'
     Write (iunit,'(6x,a,e10.3,a)') 'EPS_DEFAULT', simulation_data%dft%delta_e%value/10000.0_wp
-    Write (iunit,'(6x,a)')         'METHOD  GPW'
+    If (simulation_data%dft%gapw%stat) Then
+      Write (iunit,'(6x,a)')         'METHOD   GAPW'
+      Write (iunit,'(6x,a)')         'ALPHA0_H    10'
+      Write (iunit,'(6x,a)')         'EPS_PGF_ORB 1.0E-8'
+      Write (iunit,'(6x,a)')         'LMAXN1      6'
+    Else
+      Write (iunit,'(6x,a)')         'METHOD  GPW'
+    End If
     If (simulation_data%dft%total_kpoints > 1) Then
       Write (iunit,'(6x,a)')       'EXTRAPOLATION  USE_GUESS  ! required for K-Point sampling'
     End If
@@ -460,7 +467,7 @@ Contains
     Write (iunit,'(4x,a)')  ' '
     Write (iunit,'(4x,a)') '#==== Settings for the SCF process'
     Write (iunit,'(4x,a)') '&SCF'
-    Write (iunit,'(6x,a)')       'SCF_GUESS   ATOMIC'
+    Write (iunit,'(6x,a)')       'SCF_GUESS   RESTART'
     Write (iunit,'(6x,a,e10.3)') 'EPS_SCF  ',  simulation_data%dft%delta_e%value/100.0_wp
     Write (iunit,'(6x,a,i4)')    'MAX_SCF  ', simulation_data%dft%scf_steps%value 
 
@@ -1170,9 +1177,11 @@ Contains
                                  & of the XC potential by activating (uncommenting) the &XC_GRID block (see input.cp2k files)'
     Call info(messages, 1)
 
-    Write (messages(1), '(1x,a)') '*** IMPORTANT: In case of lack of convergence with increasing cutoff, the user must change the&
-                                 & method GPW to GPAW manually (block QS). The GPAW method is not supported by ALC_EQCM'
-    Call info(messages, 1)
+    If (.Not. simulation_data%dft%gapw%stat) Then
+      Write (messages(1), '(1x,a)') '*** IMPORTANT: In case of lack of convergence with increasing the cutoff, the user must&
+                                   & change the method GPW to GAPW. This is done by setting the directive "gapw" to .True.'
+      Call info(messages, 1)
+    End If
     
 
     Write (messages(1), '(1x,a)') 'The user can manually insert the sub-block "&PRINT" to print different physical quantities&
