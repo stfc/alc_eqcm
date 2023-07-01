@@ -57,6 +57,7 @@ Module redox
     Real(Kind=wp), Allocatable,     Public :: time(:,:)
     Real(Kind=wp), Allocatable,     Public :: voltage(:,:)
     Real(Kind=wp), Allocatable,     Public :: current(:,:)
+    Real(Kind=wp), Allocatable,     Public :: charge(:,:)
     Character(Len=16), Allocatable, Public :: label_leg(:,:)
 
     ! Limits
@@ -85,12 +86,13 @@ Contains
     Logical          , Intent(In   )  :: flag_time 
 
     Character(Len=256)  :: message
-    Integer(Kind=wi) :: fail(4)
+    Integer(Kind=wi) :: fail(5)
 
-    Allocate(T%voltage(T%maxpoints,T%ncycles) , Stat=fail(1))
-    Allocate(T%current(T%maxpoints,T%ncycles)   , Stat=fail(2))
-    Allocate(T%points(T%ncycles)                , Stat=fail(3))
-    Allocate(T%label_leg(2,T%ncycles)           , Stat=fail(4))
+    Allocate(T%voltage(T%maxpoints,T%ncycles)  , Stat=fail(1))
+    Allocate(T%current(T%maxpoints,T%ncycles)  , Stat=fail(2))
+    Allocate(T%charge(T%maxpoints,T%ncycles)   , Stat=fail(3))
+    Allocate(T%points(T%ncycles)               , Stat=fail(4))
+    Allocate(T%label_leg(2,T%ncycles)          , Stat=fail(5))
 
     If (Any(fail > 0)) Then
       Write (message,'(1x,1a)') '***ERROR: Allocation problems for general arrays&
@@ -100,6 +102,7 @@ Contains
 
     !Initialise
     T%voltage=0.0_wp
+    T%current=0.0_wp
     T%current=0.0_wp
     T%points=0
     T%label_leg= ' '
@@ -245,11 +248,13 @@ Contains
     
     redox_data%l_voltage_range=.False.
 
-    Call info(' ',1)
-    Write (messages(1),'(1x,a)') 'Characterization analysis'
-    Write (messages(2),'(1x,a)') '========================='
-    Call info(messages, 2)
-
+    If (Trim(eqcm_data%analysis%type) /= 'fluxes') Then
+     Call info(' ',1)
+     Write (messages(1),'(1x,a)') 'Characterization analysis'
+     Write (messages(2),'(1x,a)') '========================='
+     Call info(messages, 2)
+    End If
+    
     Call redox_cycles(eqcm_data, redox_data)
 
     !Extract values and integrate quantities
@@ -262,42 +267,44 @@ Contains
       Call extract_Dmass(eqcm_data, redox_data, electrode_data)
     End If
 
-    Write (messages(1),'(1x,a)') 'Relevant computed quantities from the reported data'
-    Call info(messages, 1)
-    Call integrated_quantitites_summary(redox_data, eqcm_data) 
-    Call print_redox_characterization(files, redox_data, eqcm_data)
-
-    If (eqcm_data%voltage_range%fread) Then 
-      ! Determine if the requested voltage range includes of not the whole CV domain
-      Call check_voltage_range_domain(eqcm_data, redox_data)
-      Call info(' ',1)
-
-      If (redox_data%l_voltage_range) Then
-        If (eqcm_data%current%fread) Then
-          Call integrate_redox_current(eqcm_data, redox_data)
-        End If   
-        Write (messages(1),'(1x,a,2(f8.2,a))') 'Computed quantities within the requested voltage range: ', &
-                                                eqcm_data%voltage_range%value(1),  ' V /', &
-                                                eqcm_data%voltage_range%value(2),  ' V'
-        Call info(messages, 1)
-        If (eqcm_data%current%fread) Then
-          Call integrate_redox_current(eqcm_data, redox_data)
-        End If   
-        If (eqcm_data%mass_frequency%fread .Or. eqcm_data%mass%fread) Then
-          Call extract_Dmass(eqcm_data, redox_data, electrode_data)
-        End If
-
-        Call integrated_quantitites_summary(redox_data, eqcm_data) 
-      Else
-        Write (messages(1),'(1x,a)') '**** WARNING: The set of recorded EQCM is within the requested voltage range.'
-        Write (messages(2),'(1x,a)') '     There is NO need to recompute the quantities of the table above.'
-        Call info(messages, 2)
+    If (Trim(eqcm_data%analysis%type) /= 'fluxes') Then
+      Write (messages(1),'(1x,a)') 'Relevant computed quantities from the reported data'
+      Call info(messages, 1)
+      Call integrated_quantitites_summary(redox_data, eqcm_data) 
+      Call print_redox_characterization(files, redox_data, eqcm_data)
+      
+      If (eqcm_data%voltage_range%fread) Then 
+        ! Determine if the requested voltage range includes of not the whole CV domain
+        Call check_redox_voltage_domain(eqcm_data, redox_data)
+        Call info(' ',1)
+      
+        If (redox_data%l_voltage_range) Then
+          If (eqcm_data%current%fread) Then
+            Call integrate_redox_current(eqcm_data, redox_data)
+          End If   
+          Write (messages(1),'(1x,a,2(f8.2,a))') 'Computed quantities within the requested voltage range: ', &
+                                                  eqcm_data%voltage_range%value(1),  ' V /', &
+                                                  eqcm_data%voltage_range%value(2),  ' V'
+          Call info(messages, 1)
+          If (eqcm_data%current%fread) Then
+            Call integrate_redox_current(eqcm_data, redox_data)
+          End If   
+          If (eqcm_data%mass_frequency%fread .Or. eqcm_data%mass%fread) Then
+            Call extract_Dmass(eqcm_data, redox_data, electrode_data)
+          End If
+      
+          Call integrated_quantitites_summary(redox_data, eqcm_data) 
+        Else
+          Write (messages(1),'(1x,a)') '**** WARNING: The set of recorded EQCM is within the requested voltage range.'
+          Write (messages(2),'(1x,a)') '     There is NO need to recompute the quantities of the table above.'
+          Call info(messages, 2)
+        End If  
       End If  
-    End If  
+    End If
 
   End Subroutine redox_characterization
 
-  Subroutine check_voltage_range_domain(eqcm_data, redox_data)
+  Subroutine check_redox_voltage_domain(eqcm_data, redox_data)
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     ! Subroutine to assign the eqcm values of CV cycles to redox cycles
     ! 
@@ -345,7 +352,7 @@ Contains
         redox_data%l_voltage_range=.True.
     End If    
 
-  End Subroutine check_voltage_range_domain
+  End Subroutine check_redox_voltage_domain
 
   Subroutine redox_cycles(eqcm_data, redox_data)
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -757,10 +764,24 @@ Contains
     Integer(Kind=wi) :: i, k
     Real(Kind=wp)    :: Dchg, Dt
 
+    redox_data%charge(1,1)=0.0_wp
+    
     Do i = 1, redox_data%limit_cycles 
       redox_data%DQ_ox(i)=0.0_wp
       redox_data%DQ_red(i)=0.0_wp
-      Dchg=0.0_wp
+      If (i==1) Then
+        redox_data%charge(1,i)=0.0_wp
+      Else
+        If (eqcm_data%time%fread) Then
+          Dt=Abs(redox_data%time(1,i)-redox_data%time(redox_data%points(i-1),i-1))
+        Else
+          Dt=Abs(redox_data%voltage(1,i)-redox_data%voltage(redox_data%points(i-1),i-1))/&
+             eqcm_data%scan_rate%value(1)
+        End If 
+        Dchg=Dt*(redox_data%current(1,i)+redox_data%current(redox_data%points(i-1),i-1))/2.0_wp
+        redox_data%charge(1,i)=redox_data%charge(redox_data%points(i-1),i-1)+Dchg
+      End If
+      
       If (redox_data%points(i) >2) Then
         Do k=2, redox_data%points(i)
           If (eqcm_data%time%fread) Then
@@ -769,7 +790,8 @@ Contains
             Dt=Abs(redox_data%voltage(k,i)-redox_data%voltage(k-1,i))/eqcm_data%scan_rate%value(1)
           End If 
           Dchg=Dt*(redox_data%current(k,i)+redox_data%current(k-1,i))/2.0_wp
-
+          redox_data%charge(k,i)=redox_data%charge(k-1,i)+Dchg
+          
           If (redox_data%current(k,i) >= 0.0_wp) Then
             If (.Not. redox_data%l_voltage_range) Then      
               redox_data%DQ_ox(i)=redox_data%DQ_ox(i)+Dchg

@@ -373,6 +373,13 @@ Contains
       Call error_stop(message)
     End If
 
+    ! GAPW 
+    If (simulation_data%dft%gapw%stat) Then
+      Write (message,'(2(1x,a))') Trim(error_dft), 'Requested "Gaussian Augmented Plane Waves" method via the "gapw"&
+                                 & diretitve is not possible for ONETEP simulations. Please remove it'
+      Call error_stop(message)
+    End If
+
     ! Energy cutoff
     If (Trim(simulation_data%dft%encut%units)/='ev') Then
        Write (message,'(2(1x,a))') Trim(error_dft), &
@@ -2172,7 +2179,17 @@ Contains
     Write (messages(4), '(1x,a)') 'Exclusion of regions from solvent filling is not possible with PBCs.'
                                   
     Call info(messages, 4)
-
+   If (.Not. simulation_data%solvation%both_surfaces) Then
+     Call info(' ', 1)
+     Write (messages(1), '(1x,a)') '****************************************************************************************'
+     Write (messages(2), '(1x,a)') 'ATTENTION!!!'
+     Write (messages(3), '(1x,a)') 'Deposited species are located at one side of the slab only. The solvation model will act'
+     Write (messages(4), '(1x,a)') 'unevenly. We advise setting the "both_surfaces" directive to .True. (see manual).'    
+     Write (messages(5), '(1x,a)') '****************************************************************************************'
+     Call info(messages, 5)
+     Call info(' ', 1)
+   End If
+    
   End Subroutine advise_solvation_onetep
 
   Subroutine advise_multigrid_onetep(simulation_data)

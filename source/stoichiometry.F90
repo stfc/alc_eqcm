@@ -7,6 +7,7 @@
 !
 ! Author        - i.scivetti Nov   2020
 ! Contribution  - i.scivetti March 2021 - Fixes to allow the generation of atomistic models
+! Contribution  - i.scivetti April 2023 - Abstraction of compute_stoichometry
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 Module stoichiometry
   
@@ -23,6 +24,9 @@ Module stoichiometry
                                FILE_ELECTRO, &
                                FILE_INTERCALATION_OX,&
                                FILE_INTERCALATION_RED,& 
+                               FILE_IONIC_CURRENT, &
+                               FILE_MOLE_FLUX, &
+                               FILE_CV_MOLES, &
                                FILE_SET_EQCM,&
                                FOLDER_ANALYSIS, &
                                refresh_out_eqcm
@@ -44,10 +48,12 @@ Module stoichiometry
   Private
    
   ! Default efficiency
-  Real(Kind=wp), Public              ::  efficiency_default = 1.0_wp
+  Real(Kind=wp), Public       ::  efficiency_default = 1.0_wp
   ! Default discretization of the stoichiometric space
-  Real(Kind=wp), Public              ::  ds_default = 0.01_wp
-  ! Paramter for the maximum length of the species name
+  Real(Kind=wp), Public       ::  ds_default = 0.01_wp
+  ! Parameter to control the printing of zero ionic currents 
+  Real(Kind=wp), Public       ::  ionic_tol = 0.000005_wp
+  ! Parameter for the maximum length of the species name
   Integer(Kind=wi), Parameter :: max_length_name_species = 12
 
   ! Type for the compoentents
@@ -185,6 +191,18 @@ Module stoichiometry
     Integer(Kind=wi), Public                     :: net_const
     ! Number of constraints per fragment
     Integer(Kind=wi)                        :: nconst_leg
+
+    ! Flags to solve the banlance equations 
+    Logical :: fsol_dep
+    Logical :: fsol
+    Logical :: fconstr(2)
+    Logical :: fconst_block
+    Logical :: fheader(2)
+    Logical :: domain_flux
+
+    ! Control files to print
+    Integer(Kind=wi) :: iunit(3)
+    
   Contains
     Private
     Procedure, Public :: init_species_arrays     => allocate_species_arrays
@@ -193,9 +211,8 @@ Module stoichiometry
     Final             :: cleanup
   End Type stoich_type
 
-  Public :: stoichometry_analysis, check_stoich_settings 
-  Public :: check_constraints_settings
-  Public :: check_components_species
+  Public :: compute_stoichometry, compute_fluxes
+  Public :: check_constraints_settings, check_stoich_settings, check_components_species
 
 Contains
 
@@ -221,7 +238,7 @@ Contains
     Allocate(T%matrix_constraints(number_species,number_species), Stat=fail(2))
     Allocate(T%index_const(number_constraints),                   Stat=fail(3))
     If (Any(fail > 0)) Then
-      Write (message,'(1x,1a)') '***ERROR: Allocation problems for constraints (stoichimetric) arrays'
+      Write (message,'(1x,1a)') '***ERROR: Allocation problems for constraints (stoichiometric) arrays'
       Call error_stop(message)
     End If
 
@@ -391,8 +408,321 @@ Contains
 
   End Subroutine cleanup
 
+  Subroutine compute_fluxes(files, eqcm_data, electrode_data, redox_data, stoich_data)
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    ! Perform the stoichiometric analysis 
+    ! 
+    ! author    - i.scivetti Nov 2020
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    Type(file_type),      Intent(InOut) :: files(:)
+    Type(eqcm_type),      Intent(InOut) :: eqcm_data
+    Type(electrode_type), Intent(InOut) :: electrode_data
+    Type(redox_type),     Intent(InOut) :: redox_data
+    Type(stoich_type),    Intent(InOut) :: stoich_data
 
-  Subroutine stoichometry_analysis(files, eqcm_data, electrode_data, redox_data, stoich_data)
+    Real(Kind=wp)       :: DM, DQ, Dt, dV, flx
+    Character(Len=256)  :: messages(6)
+    Character(Len=256)  :: iunit_name(3)
+    Logical             :: fpass, fclass(2)
+
+    Integer(Kind=wi)    :: i, j, k, l, indx_i(2), indx_j(2)
+    Integer(Kind=wi)    :: nflux, nion
+    Integer(Kind=wi)    :: valid_redox_cycles
+    
+    Integer(Kind=wi)    :: redox_separate(redox_data%limit_cycles)
+    Real(Kind=wp)       :: coeff(stoich_data%num_species%value,redox_data%maxpoints,redox_data%limit_cycles)
+    Real(Kind=wp)       :: flux(stoich_data%num_species%value,redox_data%maxpoints,redox_data%limit_cycles)
+    Real(Kind=wp)       :: ionic(stoich_data%num_species%value,redox_data%maxpoints,redox_data%limit_cycles)
+    Real(Kind=wp)       :: cv_moles(stoich_data%num_species%value,redox_data%maxpoints,redox_data%limit_cycles)
+
+   ! Real(Kind=wp)       :: s0(stoich_data%num_species%value)
+
+    Integer(Kind=wi)    :: icount_var(stoich_data%num_species%value)
+    Integer(Kind=wi)    :: icount_ions(stoich_data%num_species%value)
+    Integer(Kind=wi)    :: isol
+    
+    stoich_data%fsol=.True.
+    stoich_data%fsol_dep=.True. 
+    stoich_data%fheader(:)=.True.
+    stoich_data%fconstr(:)=.True.
+    stoich_data%fconst_block=.True.
+
+    ! counters
+    icount_var=0
+    icount_ions=0
+    nflux=0
+    nion=0
+
+    !Do k=1, stoich_data%num_species%value
+    !  s0(k)=stoich_data%species(k)%s0
+    !End Do
+    
+    ! Classify species for flux and ion current
+    Do k = 1, stoich_data%num_species%value
+      If (Trim(stoich_data%species(k)%vartype0)/='fixed') Then
+        nflux=nflux+1
+        icount_var(nflux)=k
+        If (Abs(stoich_data%species(k)%ox)>epsilon(1.0_wp)) Then
+          nion=nion+1
+          icount_ions(nion)=k
+        End If
+      End If
+    End Do
+
+    Call info(' ',1)
+    Call stoich_data%species_extra(eqcm_data%process, redox_data%limit_cycles)
+        
+    Write (messages(1),'(1x,a)') 'Delta moles, mole fluxes and ionic currents'
+    Write (messages(2),'(1x,a)') '==========================================='
+    Call info(messages, 2)
+
+    Do i = 1, redox_data%limit_cycles
+      j=1
+      fpass=.True.
+      Do While (j <= redox_data%points(i)-1 .And. fpass)
+        dV=redox_data%voltage(j+1,i)-redox_data%voltage(j,i)
+        If (eqcm_data%scan_sweep_ref=='negative' .And. dV>0 ) Then
+          If (redox_data%current(j,i)>0) Then
+            redox_separate(i)=j-1
+            fpass=.False.
+          End If
+        End If
+        If (eqcm_data%scan_sweep_ref=='positive' .And. dV<0 ) Then
+          If (redox_data%current(j,i)<0) Then
+             redox_separate(i)=j-1
+             fpass=.False.
+          End If
+        End If
+        j=j+1
+      End Do
+    End Do
+    
+    ! Find if the first leg is oxidation or reduction    
+    stoich_data%first_leg = Trim(redox_data%label_leg(1,1))
+     
+    If (Trim(eqcm_data%process%type) == 'intercalation') Then
+      ! Determine the number of moles for the host material to participate in the reaction
+      Call set_mole(eqcm_data, electrode_data, stoich_data)
+      If (stoich_data%num_variables >= 2) Then
+        Call set_matrix_balance(stoich_data, 'initial')
+      End If 
+    End If
+
+    Call print_stoichiometric_settings(eqcm_data, stoich_data)
+
+    ! Here is where the LOOP starts
+    i=1
+    fpass=.True.
+    Do While (i <= redox_data%limit_cycles .And. fpass)
+      fclass=.True.
+      stoich_data%cv_cycle=i
+      isol=0
+      Do j = 1, redox_data%points(i)
+        If (j==1) Then
+          If (i==1) Then
+            DM=0.0_wp
+            DQ=0.0_wp
+          Else
+            DM=redox_data%mass(j,i)-redox_data%mass(redox_data%points(i-1),i-1)
+            DQ=redox_data%charge(j,i)-redox_data%charge(redox_data%points(i-1),i-1)
+          End If
+        Else
+          DM=redox_data%mass(j,i)-redox_data%mass(j-1,i)
+          DQ=redox_data%charge(j,i)-redox_data%charge(j-1,i) 
+        End If
+        
+        If (j<=redox_separate(i)) Then
+          stoich_data%cv_leg = Trim(redox_data%label_leg(1,i))
+          l=1
+        Else
+          stoich_data%cv_leg = Trim(redox_data%label_leg(2,i))
+          l=2
+        End If
+
+       !Find which variables are dependent, independent and fixed, including contraints
+        If (Trim(eqcm_data%process%type) == 'intercalation') Then
+          !Set matrix DM-DQ 
+           stoich_data%matrix_redox(1)=DM/stoich_data%mole(1)
+           stoich_data%matrix_redox(2)=DQ/Farad/stoich_data%mole(1)
+        End If   
+
+
+        If (fclass(l))Then
+          Call classify_variables(stoich_data)
+          fclass(l)=.False.
+        End If
+        
+        If (Trim(eqcm_data%process%type) == 'intercalation') Then
+          ! Print Contraints to file, both for oxidation and reduction, depending on what happens first
+          If (stoich_data%block_constraints%fread) Then
+            If (stoich_data%fconst_block) Then
+              Call info('CONSTRAINTS (from &block_constraints_species)',1)  
+              stoich_data%fconst_block=.False.
+            End If
+            If (stoich_data%cv_cycle==1 .And. stoich_data%fconstr(l)) Then 
+              stoich_data%fconstr(l)=.False.
+              Call print_constrained_variables(stoich_data)
+            End If
+            Call refresh_out_eqcm(files)
+          End If
+
+          If (stoich_data%num_indep >= 2) Then
+            Write (messages(1),'(1x,a,i2)') '***ERROR: the number of independent stoichometric variables for "'&
+                                            &//Trim(stoich_data%cv_leg)//'" is: ', stoich_data%num_indep
+            If (stoich_data%block_constraints%fread) Then
+              Write (messages(2),'(1x,a)')  '   Please add a valid set of constraints to eliminate the number&
+                                            & of independent variables'
+            Else
+              Write (messages(2),'(1x,a)')  '   Please define the &block_constraints_species block to eliminate&
+                                            & the number of independent variables'
+            End If
+            Call info(messages, 2)
+            Call error_stop(' ')
+          End If
+          
+          ! Solve the mass and charge banlance equations
+          Call solve_balance_equations(stoich_data, i, l, eqcm_data%analysis%type)
+        End If
+        ! Record solutions...
+        If (Trim(eqcm_data%process%type) == 'intercalation') Then
+          ! Solve the stoichiometry according to the particular case
+          If (stoich_data%fsol) Then
+            isol=isol+1
+            Do k=1, stoich_data%num_species%value
+               stoich_data%species(k)%s0= stoich_data%species(k)%s + stoich_data%species(k)%s0
+            End Do
+          End If
+
+          Do k=1, stoich_data%num_species%value
+            coeff(k,j,i)=stoich_data%species(k)%s0
+            cv_moles(k,j,i)=g_to_ng*stoich_data%mole(1)*(coeff(k,j,i)-stoich_data%species(k)%s0_pristine)
+          End Do
+        End If
+      End Do
+
+
+      ! Check if there were computed solutions 
+      If (isol==0) Then
+        fpass=.False.
+        Write(messages(1), '(a,i3)') '***Problems: no valid solutions for redox cycle ', i
+        Call info(messages, 1)
+        If (i==1) Then
+          Call error_stop(' ')
+        Else
+          Write(messages(1), '(a,i3)') '   Results will be printed up to the redox cycle: ', i-1
+          Call info(messages, 1)
+          valid_redox_cycles=i-1
+        End If
+      End If
+      i=i+1
+    End Do
+    
+    If (fpass) Then
+      valid_redox_cycles=redox_data%limit_cycles
+    End If
+
+    !Compute fluxes and ionic currents
+    Do i = 1, valid_redox_cycles
+      Do j = 1, redox_data%points(i)
+        Do k = 1, stoich_data%num_species%value
+          If (j==1) Then
+            If (i==1) Then
+              indx_i(1)=i
+              indx_i(2)=i
+              indx_j(1)=j
+              indx_j(2)=j+1
+            Else
+              indx_i(1)=i-1
+              indx_i(2)=i
+              indx_j(1)=redox_data%points(i-1)
+              indx_j(2)=j
+            End If
+          Else
+            indx_i(1)=i
+            indx_i(2)=i
+            indx_j(1)=j-1
+            indx_j(2)=j
+          End If
+          
+          If (eqcm_data%time%fread) Then
+            Dt=redox_data%time(indx_j(2),indx_i(2))-redox_data%time(indx_j(1),indx_i(1))
+          Else
+            Dt=Abs(redox_data%voltage(indx_j(2),indx_i(2))-redox_data%voltage(indx_j(1),indx_i(1)))/eqcm_data%scan_rate%value(1)
+          End If
+          flx=stoich_data%mole(1)*(coeff(k,indx_j(2),indx_i(2))-coeff(k,indx_j(1),indx_i(1)))/Dt
+          flux(k,j,i)=flx*g_to_ng
+          ionic(k,j,i)=-Farad*flx*stoich_data%species(k)%ox
+          If (Abs(ionic(k,j,i)) < ionic_tol) Then
+            ionic(k,j,i)=ionic_tol/10.0_wp
+          End If
+        End Do
+      End Do
+    End Do
+
+    ! Open files
+    ! FILE_MOLE_FLUX
+    Open(Newunit=files(FILE_MOLE_FLUX)%unit_no, File=files(FILE_MOLE_FLUX)%filename, Status='Replace')
+    stoich_data%iunit(1)=files(FILE_MOLE_FLUX)%unit_no
+    iunit_name(1)=Trim(files(FILE_MOLE_FLUX)%filename) 
+    ! FILE_IONIC_CURRENT
+    Open(Newunit=files(FILE_IONIC_CURRENT)%unit_no, File=files(FILE_IONIC_CURRENT)%filename, Status='Replace')
+    stoich_data%iunit(2)=files(FILE_IONIC_CURRENT)%unit_no
+    iunit_name(2)=Trim(files(FILE_IONIC_CURRENT)%filename)
+    ! FILE_CV_MOLES
+    Open(Newunit=files(FILE_CV_MOLES)%unit_no, File=files(FILE_CV_MOLES)%filename, Status='Replace')
+    stoich_data%iunit(3)=files(FILE_CV_MOLES)%unit_no
+    iunit_name(3)=Trim(files(FILE_CV_MOLES)%filename)
+
+    ! Print headers
+    Write(stoich_data%iunit(1),'(a,18x,a)')          '#', 'Mole flux [nmol/s]'     
+    Write(stoich_data%iunit(1),'(a,11x,(*(a,16x)))') '# Voltage [V]', (Trim(stoich_data%species(icount_var(k))%tag), k = 1, nflux)
+    Write(stoich_data%iunit(2),'(a,18x,a)')          '#', 'Ionic current [mA]'     
+    Write(stoich_data%iunit(2),'(a,11x,(*(a,16x)))') '# Voltage [V]', (Trim(stoich_data%species(icount_ions(k))%tag), k = 1, nion)
+    Write(stoich_data%iunit(3),'(a,18x,a)')          '#', 'Delta moles along CV scan [nmols]'     
+    Write(stoich_data%iunit(3),'(a,11x,(*(a,16x)))') '# Voltage [V]', (Trim(stoich_data%species(icount_var(k))%tag), k = 1, nflux)
+    ! Print results to files
+    Do i = 1, valid_redox_cycles
+      Do j = 1, redox_data%points(i)
+        Write(stoich_data%iunit(1), '(1x,f8.3,10x,(*(f10.5,8x)))') redox_data%voltage(j,i), (flux(icount_var(k),j,i), k = 1, nflux)
+        Write(stoich_data%iunit(2), '(1x,f8.3,10x,(*(f10.5,8x)))') redox_data%voltage(j,i), (ionic(icount_ions(k),j,i), k = 1, nion)
+        Write(stoich_data%iunit(3), '(1x,f8.3,10x,(*(f10.5,8x)))') redox_data%voltage(j,i),&
+                                                                 & (cv_moles(icount_var(k),j,i), k = 1, nflux)
+      End Do
+    End Do
+    
+    ! Close and move files
+    Do k= 1, 3
+      Close(stoich_data%iunit(k))
+      Call execute_command_line('mv '//Trim(iunit_name(k))//' '//Trim(FOLDER_ANALYSIS)) 
+    End Do    
+
+    ! Print to OUT_EQCM
+    Call info(' ', 1)
+    Write (messages(1),'(1x,a)') 'Print mole fluxes to file '//Trim(FOLDER_ANALYSIS)//'/'//Trim(iunit_name(1))
+    Write (messages(2),'(1x,a)') 'Print ionic currents to file '//Trim(FOLDER_ANALYSIS)//'/'//Trim(iunit_name(2))
+    Write (messages(3),'(1x,a)') 'Print delta moles to file '//Trim(FOLDER_ANALYSIS)//'/'//Trim(iunit_name(3))
+    Call info(messages, 3)
+
+    ! Print to OUT_EQCM
+    Call info(' ', 1)
+    Write (messages(1),'(1x,a)') '***** ATTENTION *****'
+    Write (messages(2),'(1x,a)') 'If the computed fluxes (MOLE_FLUX file) exhibit strong noise, the user should use values'  
+    Write (messages(3),'(1x,a)') 'of the CV_MOLES file, fit them with a polynomial and compute the fluxes manually.'
+    Call info(messages, 3)
+    If (stoich_data%block_constraints%fread) Then
+      Write (messages(1),'(1x,a)') 'If the computed fluxes and ionic currents show unphysical trends, it is likely there'
+      Write (messages(2),'(1x,a)') 'are problems with the settings of the &Block_constraints_Species. Please revise the block.' 
+      Call info(messages, 2)
+    End If  
+    Write (messages(1),'(1x,a)') '*********************'
+    Call info(messages, 1)
+ 
+    ! refresh OUT_EQCM
+    Call refresh_out_eqcm(files)
+ 
+  End Subroutine compute_fluxes
+
+  Subroutine compute_stoichometry(files, eqcm_data, electrode_data, redox_data, stoich_data)
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     ! Perform the stoichiometric analysis 
     ! 
@@ -405,23 +735,22 @@ Contains
     Type(stoich_type),    Intent(InOut) :: stoich_data
 
     Real(Kind=wp)       :: DM, DQ
-    Character(Len=256)  :: messages(6), message_end(2)
+    Character(Len=256)  :: messages(6), message_end(2), message
     Character(Len=256)  :: iunit_name(2), error_msg
-    Integer(Kind=wi)    :: iunit_stoich(2)
     Integer(Kind=wi)    :: i, j, k
     Logical             :: fprint, ferror
-    Logical             :: fconstr(2), fheader(2), flag
-    Logical             :: fsol, fsol_dep
+
     Integer(Kind=wi)    :: legs, redox_cycles 
 
-    fsol=.True.
-    fsol_dep=.True. 
+    stoich_data%fsol=.True.
+    stoich_data%fsol_dep=.True. 
+    stoich_data%fheader(:)=.True.
+    stoich_data%fconstr(:)=.True.
+    stoich_data%fconst_block=.True.
+
     fprint=.True.
     ferror=.False.
-    fconstr(:)=.True.
-    fheader(:)=.True.
-    flag=.True.
-
+    
     Call info(' ',1)
     Call stoich_data%species_extra(eqcm_data%process, redox_data%limit_cycles)
         
@@ -432,54 +761,8 @@ Contains
     ! Find if the first leg is oxidation or reduction    
     stoich_data%first_leg = Trim(redox_data%label_leg(1,1))
      
-    If (eqcm_data%voltage_range%fread) Then
-      If (Trim(stoich_data%first_leg)=='oxidation') Then
-        If (eqcm_data%voltage_range%value(1) > redox_data%min_voltage) Then
-          Write (messages(1),'(1x,a)') '***ERROR: the lowest value of "voltage_range" is larger than the&
-                                       & lowest recorded value for the voltage'
-          Write (messages(2),'(1x,a)') '   Stoichiometric analysis for the first oxidation is NOT possible'
-          Write (messages(3),'(1x,a)') '   Please review the values of DATA_EQCM and re-define "voltage_range"'
-          Call info(messages, 3)
-          Call error_stop(' ')
-        Else
-          If (eqcm_data%voltage_range%value(2) < redox_data%max_voltage) Then
-            Write (messages(1),'(1x,a)') '****IMPORTANT**** Stoichiometric analysis will only be executed for the&
-                                        & first oxidation between the values specified by "voltage_range"'
-            Write (messages(2),'(1x,a)') '  '
-            Call info(messages, 2)
-            redox_data%limit_cycles=1 
-            redox_data%legs=1 
-          Else
-            redox_data%legs=2 
-          End If  
-        End If        
-      Else If (Trim(stoich_data%first_leg)=='reduction') Then
-        If (eqcm_data%voltage_range%value(2) < redox_data%max_voltage) Then
-          Write (messages(1),'(1x,a)') '***ERROR: the highest value of "voltage_range" is lower than the&
-                                       & highest recorded value for the voltage'
-          Write (messages(2),'(1x,a)') '   Stoichiometric analysis for the first reduction is NOT possible'
-          Write (messages(3),'(1x,a)') '   Please review the values of DATA_EQCM and re-define "voltage_range"'
-          Call info(messages, 3)
-          Call error_stop(' ')
-        Else
-          If (eqcm_data%voltage_range%value(1) > redox_data%min_voltage) Then
-            Write (messages(1),'(1x,a)') '****IMPORTANT**** Stoichiometric analysis will only be executed for the&
-                                        & first reduction between the values specified by "voltage_range"'
-            Write (messages(2),'(1x,a)') '  '
-            Call info(messages, 2)
-            redox_data%limit_cycles=1 
-            redox_data%legs=1 
-          Else
-            redox_cycles=redox_data%limit_cycles
-            redox_data%legs=2 
-          End If  
-        End If        
-      End If
-    Else
-      redox_data%legs=2 
-    End If        
-
-    ! Define limits
+    ! redox voltage limits
+    Call check_voltage_range(stoich_data, eqcm_data, redox_data) 
     redox_cycles=redox_data%limit_cycles  
     legs=redox_data%legs
 
@@ -488,11 +771,11 @@ Contains
       Call set_mole(eqcm_data, electrode_data, stoich_data)
       If (redox_data%label_leg(1,1)=='reduction') Then
         Open(Newunit=files(FILE_INTERCALATION_RED)%unit_no, File=files(FILE_INTERCALATION_RED)%filename, Status='Replace')
-        iunit_stoich(1)=files(FILE_INTERCALATION_RED)%unit_no
+        stoich_data%iunit(1)=files(FILE_INTERCALATION_RED)%unit_no
         iunit_name(1)=Trim(files(FILE_INTERCALATION_RED)%filename) 
       ElseIf (redox_data%label_leg(1,1)=='oxidation') Then
         Open(Newunit=files(FILE_INTERCALATION_OX)%unit_no, File=files(FILE_INTERCALATION_OX)%filename, Status='Replace')
-        iunit_stoich(1)=files(FILE_INTERCALATION_OX)%unit_no
+        stoich_data%iunit(1)=files(FILE_INTERCALATION_OX)%unit_no
         iunit_name(1)=Trim(files(FILE_INTERCALATION_OX)%filename) 
       End If
     End If
@@ -504,11 +787,40 @@ Contains
     End If 
 
     i=1
-    ! Here is where the loop starts
+    ! Here is where the LOOP starts
     Do While (i <= redox_cycles .And. stoich_data%continue_cv .And. stoich_data%sol_exist)
       stoich_data%cv_cycle=i
       j=1
       Do While (j <= legs .And. stoich_data%continue_cv .And. stoich_data%sol_exist)
+        If (fprint) Then
+          If (Trim(eqcm_data%process%type) == 'intercalation') Then
+              If (j == 2) Then
+                If (redox_data%label_leg(2,1)=='reduction') Then
+                  Open(Newunit=files(FILE_INTERCALATION_RED)%unit_no, File=files(FILE_INTERCALATION_RED)%filename, Status='Replace')
+                  stoich_data%iunit(2)=files(FILE_INTERCALATION_RED)%unit_no
+                  iunit_name(2)=Trim(files(FILE_INTERCALATION_RED)%filename) 
+                ElseIf (redox_data%label_leg(2,1)=='oxidation') Then
+                  Open(Newunit=files(FILE_INTERCALATION_OX)%unit_no, File=files(FILE_INTERCALATION_OX)%filename, Status='Replace')
+                  stoich_data%iunit(2)=files(FILE_INTERCALATION_OX)%unit_no
+                  iunit_name(2)=Trim(files(FILE_INTERCALATION_OX)%filename) 
+                End If
+                Write (message_end(2),'(1x,4a)') 'Print stoichiometric solutions to files ',&
+                                                 & Trim(FOLDER_ANALYSIS)//'/'//Trim(iunit_name(1)), ' and ',&
+                                                 & Trim(FOLDER_ANALYSIS)//'/'//Trim(iunit_name(2))
+                fprint=.False.
+              Else
+                Write (message_end(1),'(1x,2a)') 'Print stoichiometric solutions to file ',&
+                                                & Trim(FOLDER_ANALYSIS)//'/'//Trim(iunit_name(1))
+              End If
+          Else If (Trim(eqcm_data%process%type) == 'electrodeposition') Then
+            Write (message,'(1x,2a)') 'Print results to file ', Trim(FOLDER_ANALYSIS)//'/'//Trim(files(FILE_ELECTRO)%filename)
+            Call info(' ', 1)
+            Call info(message,1)
+            fprint=.False.
+          End If
+        End If
+
+        ! Define what is oxidation and what is reduction 
         If (redox_data%label_leg(j,i)=='oxidation') Then
           DM=redox_data%DM_ox(i)
           DQ=redox_data%DQ_ox(i)
@@ -518,89 +830,48 @@ Contains
         End If
         stoich_data%cv_leg = Trim(redox_data%label_leg(j,i))
 
-        ! If intercalation....
-        !!!!!!!!!!!!!!!!!!!!!!
+       !Find which variables are dependent, independent and fixed, including contraints
         If (Trim(eqcm_data%process%type) == 'intercalation') Then
-          If (fprint) Then
-            If (j == 2) Then
-              If (redox_data%label_leg(2,1)=='reduction') Then
-                Open(Newunit=files(FILE_INTERCALATION_RED)%unit_no, File=files(FILE_INTERCALATION_RED)%filename, Status='Replace')
-                iunit_stoich(2)=files(FILE_INTERCALATION_RED)%unit_no
-                iunit_name(2)=Trim(files(FILE_INTERCALATION_RED)%filename) 
-              ElseIf (redox_data%label_leg(2,1)=='oxidation') Then
-                Open(Newunit=files(FILE_INTERCALATION_OX)%unit_no, File=files(FILE_INTERCALATION_OX)%filename, Status='Replace')
-                iunit_stoich(2)=files(FILE_INTERCALATION_OX)%unit_no
-                iunit_name(2)=Trim(files(FILE_INTERCALATION_OX)%filename) 
-              End If
-              Write (message_end(2),'(1x,4a)') 'Print stoichiometric solutions to files ',&
-                                               & Trim(FOLDER_ANALYSIS)//'/'//Trim(iunit_name(1)), ' and ',&
-                                               & Trim(FOLDER_ANALYSIS)//'/'//Trim(iunit_name(2))
-              fprint=.False.
-            Else
-              Write (message_end(1),'(1x,2a)') 'Print stoichiometric solutions to file ',&
-                                              & Trim(FOLDER_ANALYSIS)//'/'//Trim(iunit_name(1))
-            End If
-          End If
-
           !Set matrix DM-DQ 
-          !!!!!!!!!!!!!!!!! 
-          stoich_data%matrix_redox(1)=DM/stoich_data%mole(1)
-          stoich_data%matrix_redox(2)=DQ/Farad/stoich_data%mole(1)
-          !!!!!!!!!!!!!!!!! 
-          !Find which variables are dependent, independent and fixed, including contraints
-          Call classify_variables(stoich_data)
+           stoich_data%matrix_redox(1)=DM/stoich_data%mole(1)
+           stoich_data%matrix_redox(2)=DQ/Farad/stoich_data%mole(1)
+        End If   
 
-          !Print headings to files INTERCALATION_X
-          If (fheader(j)) Then
-            Call print_stoich_file(stoich_data, iunit_stoich(j), 'header')
-            fheader(j)=.False.
+        Call classify_variables(stoich_data)
+        
+        If (Trim(eqcm_data%process%type) == 'intercalation') Then
+          !Print headings to files INTERCALATION_OX/RED
+          If (stoich_data%fheader(j)) Then
+            Call print_stoich_file(stoich_data, stoich_data%iunit(j), 'header')
+            stoich_data%fheader(j)=.False.
           End If
-
+          
           ! Print Contraints to file, both for oxidation and reduction, depending on what happens first
           If (stoich_data%block_constraints%fread) Then
-            If (flag) Then
+            If (stoich_data%fconst_block) Then
               Call info('CONSTRAINTS (from &block_constraints_species)',1)  
-              flag=.False.
+              stoich_data%fconst_block=.False.
             End If
-            If (stoich_data%cv_cycle==1 .And. fconstr(j)) Then 
-              fconstr(j)=.False.
+            If (stoich_data%cv_cycle==1 .And. stoich_data%fconstr(j)) Then 
+              stoich_data%fconstr(j)=.False.
               Call print_constrained_variables(stoich_data)
+              Call refresh_out_eqcm(files)
             End If
           End If
+          ! Solve the mass and charge banlance equations
+          Call solve_balance_equations(stoich_data, i, j, eqcm_data%analysis%type)
 
-          ! Build the charge and mass balance matrix
-          If (stoich_data%num_variables >= 2) Then
-            Call set_matrix_balance(stoich_data, 'cv')
-          End If 
-          ! Find the domains for the involved stoichiometric variables
-          Call set_stoich_domains(stoich_data)
-          If (.Not. stoich_data%single_sol) Then
-              Call print_stoich_file(stoich_data, iunit_stoich(j), 'cycle_only')
-          End If        
+        ! If electrodeposition....
+        ElseIf (Trim(eqcm_data%process%type) == 'electrodeposition') Then
+          !Find which variables are dependent, independent and fixed, including contraints
+          Call electro_deposition(i, j, DM, DQ, stoich_data, eqcm_data%mass_frequency%fread,& 
+                                  eqcm_data%mass%fread, eqcm_data%voltage_range%fread)
+        End If
+        
+        ! Record solutions....
+        If (Trim(eqcm_data%process%type) == 'intercalation') Then
           ! Solve the stoichiometry according to the particular case
-          If (stoich_data%num_indep >= 1)then   
-            Call sample_stoich_phase_space(stoich_data, 'find_solutions', iunit_stoich(j), i, j)
-          ElseIf (stoich_data%num_indep == 0)then
-            If (stoich_data%num_dep == 2) Then
-              Call solve_stoichiometry(stoich_data, fsol_dep)
-              If (fsol_dep) Then
-                If (stoich_data%block_constraints%fread) Then
-                  Call setcheck_constrained_solutions(stoich_data, fsol)
-                Else
-                  fsol=.True.
-                End If
-              Else
-                fsol=.False.
-              End If
-            ElseIf (stoich_data%num_dep == 1) Then
-              Call solve_stoichiometry(stoich_data, fsol)
-            End If
-            If (fsol) Then
-              Call obtain_electrons(stoich_data) 
-              Call print_stoich_file(stoich_data, iunit_stoich(j), 'coefficients')
-            Else
-              stoich_data%sol_exist=.False.
-            End If
+          If (stoich_data%num_indep == 0)then
             Do k=1, stoich_data%num_species%value
                stoich_data%species(k)%s0= stoich_data%species(k)%s + stoich_data%species(k)%s0
             End Do
@@ -609,15 +880,8 @@ Contains
           If (stoich_data%single_sol) Then
             stoich_data%solution_coeff(:,j,i)=stoich_data%species(:)%s0
           End If
-
-        ! If electrodeposition....
-        !!!!!!!!!!!!!!!!!!!!!!!!!!
-        ElseIf (Trim(eqcm_data%process%type) == 'electrodeposition') Then
-          !Find which variables are dependent, independent and fixed, including contraints
-          Call classify_variables(stoich_data)
-          Call electro_deposition(i, j, DM, DQ, stoich_data, eqcm_data%mass_frequency%fread, eqcm_data%mass%fread,&
-                                & eqcm_data%voltage_range%fread)
         End If
+        
         j=j+1
       End Do
       i=i+1
@@ -628,8 +892,8 @@ Contains
     Else If (Trim(eqcm_data%process%type) == 'intercalation') Then
       If (.Not. stoich_data%sol_exist) Then
          ferror=.True.
-         Write (messages(1),'(3a,i3,a)') '***ERROR:  No solution is found during the ', Trim(stoich_data%cv_leg),&
-                                      &' part of cycle ', stoich_data%cv_cycle, '. Please review:'
+         Write (messages(1),'(3a,i3,a)') '***ERROR:  No solution is found for the ', Trim(stoich_data%cv_leg),&
+                                      &' of cycle ', stoich_data%cv_cycle, '. Please review:'
          Write (messages(2),'(1x,a)')    '  i) stoichiometric settings in &block_species'
          Write (messages(3),'(1x,a)')    ' ii) the efficiency set for the reaction (directive "efficiency")'
          Write (messages(4),'(1x,a)')    'iii) computed EQCM quantities for the selected voltage range' 
@@ -661,39 +925,101 @@ Contains
         End If
       End If 
 
-      If (.Not. ferror) Call info(' ', 1)
+      If (.Not. ferror) Then
+        Call info(' ', 1)
+      End If  
 
       ! Close STOICHIOMETRY  files
-      Close(iunit_stoich(1))
+      Close(stoich_data%iunit(1))
       ! Move file
       Call execute_command_line('mv '//Trim(iunit_name(1))//' '//Trim(FOLDER_ANALYSIS)) 
       If (.Not. fprint) Then
         If (.Not. ferror) Call info(message_end(2),1)
-        Close(iunit_stoich(2))
+        Close(stoich_data%iunit(2))
         ! Move file
         Call execute_command_line('mv '//Trim(iunit_name(2))//' '//Trim(FOLDER_ANALYSIS)) 
       Else
-        If (.Not. ferror) Call info(message_end(1),1)
+        If (.Not. ferror) Then
+          Call info(message_end(1),1)
+        End If  
       End If
  
-      If (ferror) Call error_stop(error_msg) 
+      If (ferror) Then 
+        Call error_stop(error_msg) 
+      End If  
 
     End If 
  
     ! refresh OUT_EQCM
     Call refresh_out_eqcm(files)
  
-  End Subroutine stoichometry_analysis
+  End Subroutine compute_stoichometry
 
+  Subroutine solve_balance_equations(stoich_data, i, j, analysis) 
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    ! Solves the mass and change balance equations  
+    ! 
+    ! author    - i.scivetti April 2023
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    Type(stoich_type),  Intent(InOut) :: stoich_data
+    Integer(Kind=wi),   Intent(In   ) :: i
+    Integer(Kind=wi),   Intent(In   ) :: j
+    Character(Len=*),   Intent(In   ) :: analysis
 
-  Subroutine set_stoich_domains(stoich_data)
+    ! Build the charge and mass balance matrix
+    If (stoich_data%num_variables >= 2) Then
+      Call set_matrix_balance(stoich_data, 'cv')
+    End If 
+
+    ! Find the domains for the involved stoichiometric variables
+    Call set_stoich_domains(stoich_data, analysis)
+    If (.Not. stoich_data%single_sol .And. (Trim(analysis) /= 'fluxes')) Then
+      Call print_stoich_file(stoich_data, stoich_data%iunit(j), 'cycle_only')
+    End If        
+
+    ! Solve the stoichiometry according to the particular case
+    If (stoich_data%num_indep >= 1) Then
+       If (stoich_data%domain_flux) Then
+         Call sample_stoich_phase_space(stoich_data, 'find_solutions', analysis, stoich_data%iunit(j), i, j)
+       Else
+         stoich_data%fsol=.False.
+       End If
+    ElseIf (stoich_data%num_indep == 0)then
+      If (stoich_data%num_dep == 2) Then
+        Call solve_stoichiometry(stoich_data)
+        If (stoich_data%fsol_dep) Then
+          If (stoich_data%block_constraints%fread) Then
+            Call setcheck_constrained_solutions(stoich_data)
+          Else
+            stoich_data%fsol=.True.
+          End If
+        Else
+          stoich_data%fsol=.False.
+        End If
+      ElseIf (stoich_data%num_dep == 1) Then
+        Call solve_stoichiometry(stoich_data)
+      End If
+      
+      If (stoich_data%fsol) Then
+        Call obtain_electrons(stoich_data) 
+        If (Trim(analysis) /= 'fluxes') Then
+          Call print_stoich_file(stoich_data, stoich_data%iunit(j), 'coefficients')
+        End If
+      Else
+        stoich_data%sol_exist=.False.
+      End If
+    End If
+
+  End Subroutine solve_balance_equations
+
+  Subroutine set_stoich_domains(stoich_data, analysis)
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     ! Set the domain of involved stoichiometric species 
     ! 
     ! author    - i.scivetti Nov 2020
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     Type(stoich_type),  Intent(InOut) :: stoich_data
-
+    Character(Len=*),   Intent(In   ) :: analysis
     Integer(Kind=wi) :: i
     
     !Define lower limit 
@@ -706,13 +1032,12 @@ Contains
 
     !Define upper limit for independent variables
     If (stoich_data%num_indep >= 1)then
-      Call sample_stoich_phase_space(stoich_data, 'upper_limit')
+      Call sample_stoich_phase_space(stoich_data, 'upper_limit', analysis)
     End If 
 
   End Subroutine set_stoich_domains
 
-
-  Subroutine sample_stoich_phase_space(stoich_data, operation, iunit, icycle, jleg)
+  Subroutine sample_stoich_phase_space(stoich_data, operation, analysis, iunit, icycle, jleg)
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     ! Sample the stoichiometric space to determine the range of solutions
     ! compatible with EQCM data
@@ -721,6 +1046,7 @@ Contains
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     Type(stoich_type),          Intent(InOut) :: stoich_data
     Character(Len=*),           Intent(In   ) :: operation
+    Character(Len=*),           Intent(In   ) :: analysis
     Integer(Kind=wi), Optional, Intent(In   ) :: iunit
     Integer(Kind=wi), Optional, Intent(In   ) :: icycle, jleg
 
@@ -731,16 +1057,15 @@ Contains
     Integer(Kind=wi) :: isol_found, isol_domain
     Integer(Kind=wi) :: itot
     Character(Len=256)   :: message
-    Logical :: fsol_dep, fsol, felect
+    Logical :: felect
 
-    fsol=.True. 
-    fsol_dep=.True.
+    stoich_data%fsol=.True. 
     felect=.True.
-
     
     ! Define variables before looping
     ! Variables for upper limits of independent variables
     If (operation=='upper_limit') Then
+      stoich_data%domain_flux=.True.
       itot=1
       isol_domain=0
       Delta_stoich=Ds_default
@@ -768,11 +1093,9 @@ Contains
         End If
         itot=itot*stoich_data%maxlist(i)
       End Do
-
-
+      
     ! Set mesh details for computation of the sotichiometric space
     ElseIf (operation=='find_solutions') Then
-
       Delta_stoich=stoich_data%discretization%value
       itot=1
       isol_found=0
@@ -795,7 +1118,6 @@ Contains
         End If
         itot=itot*stoich_data%maxlist(i)
       End Do
-
     End If
 
     ix=1
@@ -803,13 +1125,12 @@ Contains
       stoich_data%list(ix)=stoich_data%list(ix)+ stoich_data%list_increment(ix)
       indx= stoich_data%index_indep(ix)
       stoich_data%species(indx)%s= stoich_data%species(indx)%limit(1) + (stoich_data%list(ix)-1)*Delta_stoich
-      If (stoich_data%list(ix) <= stoich_data%maxlist(ix) .And. &
-         stoich_data%list(ix) >= 1 ) Then
+      If (stoich_data%list(ix) <= stoich_data%maxlist(ix) .And. stoich_data%list(ix) >= 1 ) Then
         If (ix == stoich_data%num_indep) Then
-          Call solve_stoichiometry(stoich_data, fsol_dep)
-          If (fsol_dep) Then
-            Call check_validity_solution(stoich_data, fsol)
-            If (fsol) Then
+          Call solve_stoichiometry(stoich_data)
+          If (stoich_data%fsol_dep) Then
+            Call check_validity_solution(stoich_data)
+            If (stoich_data%fsol) Then
               If (operation=='upper_limit') Then
                 isol_domain=isol_domain+1
                 Do i=1, stoich_data%num_indep
@@ -819,13 +1140,15 @@ Contains
                   End If
                 End Do
               ElseIf (operation=='find_solutions') Then
-                Call obtain_electrons(stoich_data)
                 isol_found=isol_found+1
-                If (felect) Then
-                  Call print_stoich_file(stoich_data, iunit, 'electrons')
-                   felect=.False.
+                If (Trim(analysis) /= 'fluxes') Then
+                  Call obtain_electrons(stoich_data)
+                  If (felect) Then
+                     Call print_stoich_file(stoich_data, iunit, 'electrons')
+                     felect=.False.
+                  End If
+                  Call print_stoich_file(stoich_data, iunit, 'coefficients')
                 End If
-                Call print_stoich_file(stoich_data, iunit, 'coefficients')
               End If
             End If
           End If
@@ -846,51 +1169,69 @@ Contains
 
     End Do
 
-
     If (operation=='find_solutions') Then
-      If (isol_found==1) Then
-        Do k=1, stoich_data%num_species%value 
-          stoich_data%species(k)%s0= stoich_data%species(k)%s + stoich_data%species(k)%s0
-        End Do
-      Else If (isol_found > 1) Then
-        Call info(' ', 1)
-        stoich_data%continue_cv=.False.
-        Write (message, '(1x,2a,a,i2,a)') 'Multiple solutions generated during ', Trim(stoich_data%cv_leg), &
-                                    &' of cycle ', stoich_data%cv_cycle, '. The stoichiometric analysis&
-                                    & stops here.'
-         Call info(message,1)
-        If (stoich_data%single_sol) Then
-          Write (message, '(a,i2,3a)')  '***PROBLEMS: A total of ', stoich_data%nconst_leg, ' constraints have&
-                                   & been set for ', Trim(stoich_data%cv_leg), &
-                                   &' which should have led to A SINGLE stoichiometric solution.'
+      If (Trim(analysis) /= 'fluxes') Then
+        If (isol_found==1) Then
+          Do k=1, stoich_data%num_species%value 
+            stoich_data%species(k)%s0= stoich_data%species(k)%s + stoich_data%species(k)%s0
+          End Do
+        Else If (isol_found > 1) Then
+          Call info(' ', 1)
+          stoich_data%continue_cv=.False.
+          Write (message, '(1x,2a,a,i2,a)') 'Multiple solutions generated during ', Trim(stoich_data%cv_leg), &
+                                      &' of cycle ', stoich_data%cv_cycle, '. The stoichiometric analysis&
+                                      & stops here.'
+           Call info(message,1)
+          If (stoich_data%single_sol) Then
+            Write (message, '(a,i2,3a)')  '***PROBLEMS: A total of ', stoich_data%nconst_leg, ' constraints have&
+                                     & been set for ', Trim(stoich_data%cv_leg), &
+                                     &' which should have led to A SINGLE stoichiometric solution.'
+            Call info(message, 1)
+            Write (message, '(1x,3a)') ' Please check the definition of constraints for ', Trim(stoich_data%cv_leg),&
+                                 & ' (see Table with types of variables above).'
+            Call info(message, 1)
+          End If
+        Else If (isol_found==0) Then
+          Write (message, '(2a,a,i2)') '***WARNING:  No stoichiometric solution has been found during the ',&
+                                    & Trim(stoich_data%cv_leg), ' of cycle ', stoich_data%cv_cycle   
           Call info(message, 1)
-          Write (message, '(1x,3a)') ' Please check the definition of constraints for ', Trim(stoich_data%cv_leg),&
-                               & ' (see Table with types of variables above).'
-          Call info(message, 1)
+          stoich_data%sol_exist=.False.
         End If
-      Else If (isol_found==0) Then
-        Write (message, '(2a,a,i2)') '***WARNING:  No stoichiometric solution has been found during the ',&
-                                  & Trim(stoich_data%cv_leg), ' of cycle ', stoich_data%cv_cycle   
-        Call info(message, 1)
-        stoich_data%sol_exist=.False.
+        stoich_data%numsol(jleg, icycle)=isol_found
+      Else
+        If (isol_found > 1) Then
+          Write (message, '(1x,2a,a,i2,a)') '***PROBLEMS: Multiple solutions generated during the "',&
+                                      & Trim(stoich_data%cv_leg), ' of cycle ', stoich_data%cv_cycle,&
+                                      & '. The "fluxes" analysis stops here.'
+          Call info(message,1)
+          Write (message, '(4x,a,i2,3a)') 'Please set/revise constrains for the species (&block_constraint_species)'
+          Call info(message, 1)
+          Write (message, '(4x,a,i2,3a)') 'Constraints must be set such that there is only one solution for each point&
+                                       & of the CV scan'
+          Call info(message, 1)
+          Call error_stop(' ')
+        End If
       End If
-      stoich_data%numsol(jleg, icycle)=isol_found
     End If
 
     If (operation=='upper_limit' .And. isol_domain==0) Then
-       Write (message, '(2a,a,i2)') '***ERROR: No stoichiometric solution has been found when computing the DOMAINS&
-                                  & of variables for ', Trim(stoich_data%cv_leg), ' of cycle ', stoich_data%cv_cycle   
-       Call info(message, 1)
-       If (stoich_data%nconst_leg/=0) Then
-         Write (message, '(1x,2a)') ' Please check the definition of constraints for ', Trim(stoich_data%cv_leg)
+       If (Trim(analysis) /= 'fluxes') Then   
+         Write (message, '(2a,a,i2)') '***ERROR: No stoichiometric solution has been found when computing the DOMAINS&
+                                    & of variables for "', Trim(stoich_data%cv_leg), '" of cycle ', stoich_data%cv_cycle   
          Call info(message, 1)
+         If (stoich_data%nconst_leg/=0) Then
+           Write (message, '(1x,2a)') ' Please check the definition of constraints for ', Trim(stoich_data%cv_leg)
+           Call info(message, 1)
+         End If
+         Call error_stop(' ')
+       Else
+         stoich_data%domain_flux=.False.
        End If
-       Call error_stop(' ')
     End If 
 
   End Subroutine sample_stoich_phase_space
 
-  Subroutine check_validity_solution(stoich_data, fsol)
+  Subroutine check_validity_solution(stoich_data)
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     ! Check if the computed solution is within a realistic range and complies 
     ! with the contraints (if set)
@@ -898,25 +1239,24 @@ Contains
     ! author    - i.scivetti Nov 2020
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     Type(stoich_type),    Intent(InOut) :: stoich_data
-    Logical,              Intent(InOut) :: fsol
  
     Integer(Kind=wi)       :: i
 
-    fsol=.True.
+    stoich_data%fsol=.True.
 
     If (stoich_data%nconst_leg/=0) Then
       ! Set if constrained variables are within a physical range  
-      Call setcheck_constrained_solutions(stoich_data, fsol)
+      Call setcheck_constrained_solutions(stoich_data)
 
       ! Check is variable has reached minimum
       i=1
-      Do While (i <= stoich_data%num_species%value .And. fsol)
+      Do While (i <= stoich_data%num_species%value .And. stoich_data%fsol)
         If (stoich_data%species(i)%fmin) Then
           If (stoich_data%species(i)%s <= stoich_data%species(i)%minvalue) Then
             stoich_data%species(i)%minvalue=stoich_data%species(i)%s
-            fsol=.True.
+            stoich_data%fsol=.True.
           Else 
-            fsol=.False. 
+            stoich_data%fsol=.False. 
           End If
         End If  
         i=i+1
@@ -924,13 +1264,13 @@ Contains
 
       ! Check is variable has reached maximum
       i=1
-      Do While (i <= stoich_data%num_species%value .And. fsol)
+      Do While (i <= stoich_data%num_species%value .And. stoich_data%fsol)
         If (stoich_data%species(i)%fmax) Then
           If (stoich_data%species(i)%s >= stoich_data%species(i)%maxvalue) Then
             stoich_data%species(i)%maxvalue=stoich_data%species(i)%s
-            fsol=.True.
+            stoich_data%fsol=.True.
           Else 
-            fsol=.False. 
+            stoich_data%fsol=.False. 
           End If
         End If  
         i=i+1
@@ -938,13 +1278,13 @@ Contains
 
       ! Check if variable is within the range
       i=1
-      Do While (i <= stoich_data%num_species%value .And. fsol)
+      Do While (i <= stoich_data%num_species%value .And. stoich_data%fsol)
         If (stoich_data%species(i)%frange) Then
           If ((stoich_data%species(i)%s+stoich_data%species(i)%s0)>= stoich_data%species(i)%range(1) .And. &
              (stoich_data%species(i)%s+stoich_data%species(i)%s0)<= stoich_data%species(i)%range(2)  ) Then
-            fsol=.True.
+            stoich_data%fsol=.True.
           Else 
-            fsol=.False. 
+            stoich_data%fsol=.False. 
           End If
         End If  
         i=i+1
@@ -954,7 +1294,7 @@ Contains
 
   End Subroutine check_validity_solution
 
-  Subroutine setcheck_constrained_solutions(stoich_data, fsol)
+  Subroutine setcheck_constrained_solutions(stoich_data)
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     ! Compute solutions under constraints and check if they are consistent 
     ! with the domain 
@@ -962,11 +1302,12 @@ Contains
     ! author    - i.scivetti Nov 2020
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     Type(stoich_type),    Intent(InOut) :: stoich_data
-    Logical,              Intent(InOut) :: fsol            
 
     Integer(Kind=wi) :: i, j
     Real(Kind=wp) :: svec(stoich_data%num_species%value)
 
+    stoich_data%fsol=.True.
+    
     ! Set solutions
     svec(:)=stoich_data%species(:)%s
     stoich_data%species(:)%s=0.0_wp
@@ -981,13 +1322,12 @@ Contains
     Do i=1, stoich_data%num_species%value
       If (stoich_data%species(i)%vartype == 'constrained') Then
         If (stoich_data%species(i)%s<stoich_data%species(i)%limit(1)) Then
-          fsol=.False.
+          stoich_data%fsol=.False.
         End If
       End If
     End Do   
 
   End Subroutine setcheck_constrained_solutions 
-
 
   Subroutine print_stoich_file(stoich_data, iunit, fragment)
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -1077,7 +1417,7 @@ Contains
    
   End Subroutine print_stoich_file
 
-  Subroutine solve_stoichiometry(stoich_data, fsol_dep)
+  Subroutine solve_stoichiometry(stoich_data)
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     ! Determine the stoichiometric coefficients from the solution of mass and
     ! charge balance equations. This subroutine is called only if the number 
@@ -1086,7 +1426,6 @@ Contains
     ! author    - i.scivetti Nov 2020
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     Type(stoich_type),            Intent(InOut) :: stoich_data
-    Logical,                      Intent(  Out) :: fsol_dep
 
     Integer(Kind=wi)   :: i, j, k
     Real(Kind=wp)      :: sol(2), aux(2)
@@ -1112,13 +1451,13 @@ Contains
       End Do
     End If 
     i=1
-    fsol_dep=.True.
-    Do While (i <= stoich_data%num_dep .And. fsol_dep)
-      fsol_dep= (stoich_data%species(stoich_data%index_dep(i))%limit(1) <= sol(i))
+    stoich_data%fsol_dep=.True.
+    Do While (i <= stoich_data%num_dep .And. stoich_data%fsol_dep)
+      stoich_data%fsol_dep= (stoich_data%species(stoich_data%index_dep(i))%limit(1) <= sol(i))
       i=i+1
     End Do
   
-    If (fsol_dep) Then
+    If (stoich_data%fsol_dep) Then
       Do i=1, stoich_data%num_dep
         stoich_data%species(stoich_data%index_dep(i))%s=sol(i)
       End Do  
@@ -1144,7 +1483,6 @@ Contains
     End Do
 
   End Subroutine obtain_electrons 
-
 
   Subroutine classify_variables(stoich_data)
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -1253,7 +1591,20 @@ Contains
               stoich_data%matrix_constraints(ic1,ic2)=stoich_data%constraints(i)%value(1)
             ElseIf (Trim(stoich_data%constraints(i)%type)=='keep_ratio') Then
               If (Trim(stoich_data%constraints(i)%leg) /= Trim(stoich_data%first_leg)) Then
-                stoich_data%matrix_constraints(ic1,ic2)=stoich_data%species(ic1)%s/stoich_data%species(ic2)%s
+                If (Abs(stoich_data%species(ic2)%s)<epsilon(1.0_wp)) Then
+                   Write (message,'(3a)')'***ERROR: "keep_ratio" type of constraint during "',&
+                                  & Trim(stoich_data%constraints(i)%leg), '" is unphysical.'
+                   Call info(message,1)  
+                   Write (message,'(3a)')'   The stoichiometry of species "', Trim(stoich_data%species(ic2)%tag),&
+                                         &'" has become zero at the previous redox segment, which leads to an NaN&
+                                         & value for the constraint.'
+                   Call info(message,1)                      
+                   Write (message,'(3a)')'   Please reconsider the settings of &block_constraint_species'
+                   Call info(message,1)
+                   Call error_stop(' ')
+                Else
+                  stoich_data%matrix_constraints(ic1,ic2)=stoich_data%species(ic1)%s/stoich_data%species(ic2)%s
+                End If
               Else
                 Write (message,'(5a)')'***ERROR: definition of "keep_ratio" type of constraint during ',&
                                   & Trim(stoich_data%constraints(i)%leg), ' is wrong, as ', Trim(stoich_data%constraints(i)%leg),& 
@@ -1304,7 +1655,7 @@ Contains
        j=j+1
       End Do
 
-    ! Count how many dependent, independent and total stoichimetric variables are left
+    ! Count how many dependent, independent and total stoichiometric variables are left
     ! Constrained variables are also numbered 
       kdep=0 ; kindep=0; kconst=0
       Do j= 1, stoich_data%num_species%value
@@ -1421,7 +1772,7 @@ Contains
     Character(Len=256)  :: message
     
     mol=stoich_data%mole(1)
-
+  
     If (stage=='initial') Then
       !Matrix balance 
       Do j= 1, stoich_data%num_species%value
@@ -1434,6 +1785,7 @@ Contains
       End Do 
 
     Else If (stage=='cv') Then
+     
       If (stoich_data%block_constraints%fread) Then 
         Do i=1, 2
           Do j=1,stoich_data%num_species%value
@@ -1456,12 +1808,16 @@ Contains
           stoich_data%matrix_eq(:,k) = stoich_data%matrix_balance(:,j)
         End If
       End Do
-      ! Inverse matrix
+
       det=stoich_data%matrix_eq(1,1)*stoich_data%matrix_eq(2,2)-stoich_data%matrix_eq(2,1)*stoich_data%matrix_eq(1,2)
       If (Abs(det)<epsilon(det)) Then
         Write (message,'(a)') '***PROBLEMS: Determinant of dependent matrix is zero! Check details of block_species!'
         Call info(message, 1)
-        Write (message,'(a)') '   At least one of the dependent variables must have a non-zero oxidation number!'
+        If (stoich_data%block_constraints%fread) Then
+          Write (message,'(a)') '   Please also review the settings of &block_constraint_species'
+        Else
+          Write (message,'(a)') '   At least one of the dependent variables must have a non-zero oxidation number!'
+        End If
         Call info(message, 1)
         Call error_stop(' ')
       End If
@@ -1600,12 +1956,9 @@ Contains
     Logical,           Intent(In   ) :: record_mass    
 
     Integer(Kind=wi) :: iunit, i
-    Character(Len=256)  :: message
 
     Open(Newunit=files(FILE_ELECTRO)%unit_no, File=files(FILE_ELECTRO)%filename, Status='Replace')
     iunit=files(FILE_ELECTRO)%unit_no
-    Write (message,'(1x,2a)') 'Print results to file ', Trim(FOLDER_ANALYSIS)//'/'//Trim(files(FILE_ELECTRO)%filename)
-    Call info(' ', 1)
     If (record_mass) Then
         Write (iunit,'(a,(*(a18,2x)))') '#Cycle', '[Dm(Q)/Dm_eff]_ox', '[Dm(Q)/Dm_eff]_red', 'mole_ox [nmol]', 'mole_red [nmol]'
     Else
@@ -1614,7 +1967,6 @@ Contains
       End If  
     End If
 
-    Call info(message,1)
     Do i=1, icycle
       Write (iunit,'(1x,i2,(*(f18.3,2x)))')  i, stoich_data%elec_depo_ratio_ox(i), stoich_data%elec_depo_ratio_red(i),&
                                             &  stoich_data%mole_ox(i)/1.0E-9, stoich_data%mole_red(i)/1.0E-9 
@@ -1711,6 +2063,65 @@ Contains
 
   End Subroutine electro_deposition
 
+  Subroutine check_voltage_range(stoich_data, eqcm_data, redox_data) 
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    ! Defines redox voltage domain  
+    ! 
+    ! author    - i.scivetti April 2023
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    Type(stoich_type),  Intent(InOut) :: stoich_data
+    Type(eqcm_type),    Intent(InOut) :: eqcm_data
+    Type(redox_type),   Intent(InOut) :: redox_data
+  
+    Character(Len=256)  :: messages(3)
+  
+    If (eqcm_data%voltage_range%fread) Then
+      If (Trim(stoich_data%first_leg)=='oxidation') Then
+        If (eqcm_data%voltage_range%value(1) > redox_data%min_voltage) Then
+          Write (messages(1),'(1x,a)') '***ERROR: the lowest value of "voltage_range" is larger than the&
+                                       & lowest recorded value for the voltage'
+          Write (messages(2),'(1x,a)') '   Stoichiometric analysis for the first oxidation is NOT possible'
+          Write (messages(3),'(1x,a)') '   Please review the values of DATA_EQCM and re-define "voltage_range"'
+          Call info(messages, 3)
+          Call error_stop(' ')
+        Else
+          If (eqcm_data%voltage_range%value(2) < redox_data%max_voltage) Then
+            Write (messages(1),'(1x,a)') '****IMPORTANT**** Stoichiometric analysis will only be executed for the&
+                                        & first oxidation between the values specified by "voltage_range"'
+            Write (messages(2),'(1x,a)') '  '
+            Call info(messages, 2)
+            redox_data%limit_cycles=1
+            redox_data%legs=1 
+          Else
+            redox_data%legs=2 
+          End If  
+        End If        
+      Else If (Trim(stoich_data%first_leg)=='reduction') Then
+        If (eqcm_data%voltage_range%value(2) < redox_data%max_voltage) Then
+          Write (messages(1),'(1x,a)') '***ERROR: the highest value of "voltage_range" is lower than the&
+                                       & highest recorded value for the voltage'
+          Write (messages(2),'(1x,a)') '   Stoichiometric analysis for the first reduction is NOT possible'
+          Write (messages(3),'(1x,a)') '   Please review the values of DATA_EQCM and re-define "voltage_range"'
+          Call info(messages, 3)
+          Call error_stop(' ')
+        Else
+          If (eqcm_data%voltage_range%value(1) > redox_data%min_voltage) Then
+            Write (messages(1),'(1x,a)') '****IMPORTANT**** Stoichiometric analysis will only be executed for the&
+                                        & first reduction between the values specified by "voltage_range"'
+            Write (messages(2),'(1x,a)') '  '
+            Call info(messages, 2)
+            redox_data%limit_cycles=1 
+            redox_data%legs=1 
+          Else
+            redox_data%legs=2 
+          End If  
+        End If        
+      End If
+    Else
+      redox_data%legs=2 
+    End If        
+  
+  End Subroutine check_voltage_range
 
   Subroutine check_components_species(files, stoich_data)
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -1824,7 +2235,7 @@ Contains
   End Subroutine check_components_species
 
 
-  Subroutine check_constraints_settings(files, stoich_data)
+  Subroutine check_constraints_settings(files, stoich_data, analysis)
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     ! Subroutine to check the format and directives for the contraints on the
     ! solution of the stoichiometric problem
@@ -1833,18 +2244,17 @@ Contains
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     Type(file_type),     Intent(InOut) :: files(:)
     Type(stoich_type),   Intent(InOut) :: stoich_data
+    Character(Len=*),    Intent(In   ) :: analysis
 
     Integer(Kind=wi)  ::  i, j
     Integer(Kind=wi)  ::  ic_ox, ic_red
-    Logical  ::  error, cond1, cond2
-    Character(Len=256)  :: messages(4)
+    Character(Len=256)  :: messages(5)
     Character(Len=64 )  :: error_set_eqcm
     Character(Len=64 )  :: error_block_constraints
+    Logical  ::  cond1, cond2
 
     error_set_eqcm = '***ERROR in file '//Trim(files(FILE_SET_EQCM)%filename)//' -'
-    error_block_constraints = '***ERROR in &block_constraints_species of file`'//Trim(files(FILE_SET_EQCM)%filename)
-
-    error=.False.
+    error_block_constraints = '***ERROR in &block_constraints_species of file '//Trim(files(FILE_SET_EQCM)%filename)
 
     ! Check correctness of constraints for stoichiometric analysis
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -1854,17 +2264,16 @@ Contains
         If (stoich_data%constraints(i)%fail) Then
           Write (messages(2),'(a,i2,a)') 'Problems with the specificaton for constraint ', i, &
                                       & ' (see manual for the correct format/syntax)'
-          error=.True.
           Call info(messages,2)
+          Call error_stop(' ')
         Else
           If (Trim(stoich_data%constraints(i)%leg) /= 'oxidation'  .And. &
-            Trim(stoich_data%constraints(i)%leg) /= 'reduction') Then
-            Write (messages(2),'(a,i2,3a)') 'The portion of the CV selected for constraint ', i,&
+              Trim(stoich_data%constraints(i)%leg) /= 'reduction') Then
+              Write (messages(2),'(a,i2,3a)') 'The portion of the CV selected for constraint ', i,&
                                          & ' has been wrongly labelled as "', Trim(stoich_data%constraints(i)%leg),&
                                          & '".  It MUST be either "oxidation" or "reduction".'
-            error=.True.
             Call info(messages,2)
-
+            Call error_stop(' ')
           End If
         End If
 
@@ -1872,8 +2281,8 @@ Contains
             Write (messages(2),'(3a)') 'Assigned value for any "', Trim(stoich_data%constraints(i)%type), '" type of constraint&
                                           & MUST ALWAYS BE >= 0.0: it is unphysical to derive cycled structures with negative&
                                           & stoichometric coefficients!'
-            error=.True.
             Call info(messages,2)
+            Call error_stop(' ')
        End If
 
        Call obtain_species_from_contraints(files,stoich_data, i)
@@ -1897,8 +2306,8 @@ Contains
                                                Trim(stoich_data%constraints(j)%leg),   &
                                                Trim(stoich_data%constraints(j)%tag_species)
                Call info(messages,4)
-               error=.True.
                Call info('Please remove duplication', 1)
+               Call error_stop(' ')
              End If
            End If
          End If
@@ -1916,8 +2325,8 @@ Contains
                                                Trim(stoich_data%constraints(i)%leg),   &
                                                Trim(stoich_data%constraints(i)%tag0_species)
                Call info(messages,2)
-               error=.True.
                Call info('appears to be redundantly defined. Please review the settings for the defined contraints', 1)
+               Call error_stop(' ')
              End If
            End If
          End If
@@ -1937,36 +2346,40 @@ Contains
 
      If ((stoich_data%num_variables-ic_ox)< 2) Then
         Write (messages(2),'((a,i2))') 'Number of defined contraints for "oxidation" is ', ic_ox
-        Call info(messages,2)
-        Write (messages(2),'((a,i2))') 'The number of (in)dependent stoichiometric variables defined in &block_species is ',&
+        Write (messages(3),'((a,i2))') 'The number of (in)dependent stoichiometric variables defined in &block_species is ',&
                                       & stoich_data%num_variables
-        Call info(messages(2),1)
-        Write (messages(2),'(a)')      'The resulting system of equations is overdetermined. Please reduce the number of&
+        Write (messages(4),'(a)')      'The resulting system of equations is overdetermined. Please reduce the number of&
                                      & contraints for "oxidation".'
-        Call info(messages(2),1)
-        Write (messages(2),'((a,i2))') 'Maximum number of allowed constraints for "oxidation" is ', stoich_data%num_variables-2
-        Call info(messages(2),1)
-        error=.True.
+        Write (messages(5),'((a,i2))') 'For this particular system and settings, the maximum number of allowed constraints&
+                                     & for "oxidation" is ', stoich_data%num_variables-2
+        Call info(messages, 5)
+        Call error_stop(' ')
      End If
 
      If ((stoich_data%num_variables-ic_red)< 2) Then
         Write (messages(2),'((a,i2))') 'Number of defined contraints for "reduction" is ', ic_red
-        Call info(messages,2)
-        Write (messages(2),'((a,i2))') 'The number of (in)dependent stoichiometric variables defined in &block_species is ',&
+        Write (messages(3),'((a,i2))') 'The number of (in)dependent stoichiometric variables defined in &block_species is ',&
                                       & stoich_data%num_variables
-        Call info(messages(2),1)
-        Write (messages(2),'(a)')      'The resulting system of equations is overdetermined. Please reduce the number of&
+        Write (messages(4),'(a)')      'The resulting system of equations is overdetermined. Please reduce the number of&
                                      & contraints for "reduction".'
-        Call info(messages(2),1)
-        Write (messages(2),'((a,i2))') 'Maximum number of allowed constraints for "reduction" is ', stoich_data%num_variables-2
-        Call info(messages(2),1)
-        error=.True.
+        Write (messages(5),'((a,i2))') 'Maximum number of allowed constraints for "reduction" is ', stoich_data%num_variables-2
+        Call info(messages, 5)
+        Call error_stop(' ')
      End If
 
-     If (error) Then
-       Call error_stop(' ')
+     If (Trim(analysis) == 'fluxes') Then
+       Do i=1, stoich_data%num_constraints%value
+         If (Trim(stoich_data%constraints(i)%type)/='ratio_fixed' .And. &     
+             Trim(stoich_data%constraints(i)%type)/='keep_ratio') Then
+             Write (messages(2),'(a,i2,a)') 'Type of constraint "'//Trim(stoich_data%constraints(i)%type)//'" for "'&
+                                            &//Trim(stoich_data%constraints(i)%leg)//'" is incompatible for the "fluxes"&
+                                            & option of directive analysis'
+          Call info(messages,2)
+          Call error_stop(' ')
+         End If
+       End Do
      End If
-
+     
   End Subroutine check_constraints_settings
 
   Subroutine obtain_species_from_contraints(files,stoich_data, ic)
@@ -2085,7 +2498,7 @@ Contains
 
   Subroutine check_stoich_settings(files, eqcm_data, stoich_data)
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    ! Subroutine to check the format and directives for stoichimetric analysis
+    ! Subroutine to check the format and directives for stoichiometric analysis
     !
     ! author    - i.scivetti Nov 2020
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -2139,7 +2552,7 @@ Contains
       End If
     End If
 
-    ! Check paramentes in blokc_species
+    ! Check paramentes in block_species
     If (.Not. stoich_data%block_species%fread) Then
       Write (messages(1),'(4a)') Trim(error_set_eqcm), ' &block_species, needed for "', Trim(eqcm_data%analysis%type),&
                                &'" analysis, not found'
@@ -2300,6 +2713,7 @@ Contains
         End If
  
         If (eqcm_data%analysis%type == 'model_cycled_sample' .Or. &
+            eqcm_data%analysis%type == 'fluxes'              .Or. & 
             eqcm_data%analysis%type == 'stoichiometry') Then
           If (ic_dep > 2) Then
             Write (messages(2),'(a)') 'The number of dependent stoichiometric variables MUST ALWAYS BE <= 2'
@@ -2318,7 +2732,8 @@ Contains
 
       ! allocate relevant matrices only if the stoichiometric problem will be solved
       If (eqcm_data%analysis%type == 'stoichiometry' .Or. &
-         eqcm_data%analysis%type == 'model_cycled_sample') Then 
+          eqcm_data%analysis%type == 'fluxes'        .Or. & 
+          eqcm_data%analysis%type == 'model_cycled_sample') Then 
          Call stoich_data%init_species_arrays('matrices')
       End If
 

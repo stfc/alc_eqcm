@@ -206,6 +206,12 @@ Module atomistic_models
     Type(species_model), Allocatable :: species(:)
     ! Slab Area
     Real(Kind=wp)             :: slab_area
+    ! geometric centre of slab
+    Real(Kind=wp)             :: slab_centre(3)
+    ! logical to cover both surfaces of slab
+    Logical                   :: both_surfaces
+    ! Invert atom
+    Real(Kind=wp)             :: inverted(3)
   End Type  
 
   ! Type for the modelling related variables 
@@ -266,6 +272,8 @@ Module atomistic_models
     Real(Kind=wp)             :: ref_stoich
     ! Decide if the structure is shifted or not
     Type(in_logic), Public    :: shift_structure
+    ! Decide if the structure is shifted or not
+    Type(in_logic), Public    :: both_surfaces
     ! Level where to start deposition from
     Type(in_param), Public    :: deposition_level
     ! Discretization of the spatial coordinates
@@ -518,9 +526,17 @@ Contains
      
     Call print_atomistic_settings(model_data)
     Call read_input_model(files, stoich_data, model_data)
+
+    ! Set deposition_level for electrodeposition
+    If (Trim(process)=='electrodeposition' .And. (.Not. model_data%deposition_level%fread)) Then
+      Call set_deposition_level(model_data)
+    End If
+
+    ! Shift structure 
     If (model_data%shift_structure%stat) Then
       Call shift_structure(model_data, process)
     End If
+    
     If (simulation_data%solvation%info%stat) Then
       Call check_orthorhombic_cell(model_data%input%cell, fortho) 
       If (.Not.fortho) Then
@@ -612,7 +628,7 @@ Contains
     Open(Newunit=files(FILE_RECORD_MODELS)%unit_no, File=files(FILE_RECORD_MODELS)%filename,Status='Replace')
     record_unit=files(FILE_RECORD_MODELS)%unit_no
     Write (record_unit, '(2(3x,a))') Trim(type_sim), Trim(model_data%output_model_format%type) 
- 
+
     ic=1
     Do While (ic <= cycles .And. activate_loop)
       jc=1
@@ -677,6 +693,11 @@ Contains
              Call info(messages,1)
            End If
 
+           ! Settings for extra atoms
+           Do i=1, model_data%types_species  
+             model_data%input%species(i)%num_extra=model_data%input%species(i)%num
+           End Do
+
            Call match_target_stoichiometry(model_data, target_stoich, 'input')
 
           ! Set initialization for random number: This is done only once when activate_random=.True.
@@ -718,7 +739,7 @@ Contains
           Call stoichiometry_sample_model(files, target_stoich, model_data)      
 
           ! Create list
-          Call create_list_net_elements(model_data%sample, model_data%types_species)
+          Call create_list_net_elements(model_data%sample, model_data%types_species,model_data%both_surfaces%stat)
 
           ! Print output file
           Call print_output_files(type_sim, files, model_data, simulation_data, hpc_data, ic, kc, name_leg)
@@ -1185,6 +1206,9 @@ Contains
     Do i=1, model_data%types_species 
       error=model_data%sample%species(i)%s-target_stoich(i)
       num=model_data%sample%species(i)%D_num+ model_data%sample%species(i)%num_show
+      If (model_data%sample%species(i)%change_content .And. model_data%both_surfaces%stat) Then
+        num=2*num
+      End If
       If (Abs(error) < model_data%stoichiometry_error%value) Then
         Write (message, fmt2)  Trim(model_data%sample%species(i)%tag), num,&
                             model_data%sample%species(i)%s, target_stoich(i), error
@@ -1214,6 +1238,12 @@ Contains
       Call info(message, 1); Write (summary,'(a)') Trim(message)
     Else
       Write (message, '(a)')    ' ***SUCCESS: target and modelled stoichiometries agree within the error tolerance.'
+      Call info(message, 1); Write (summary,'(a)') Trim(message)
+    End If
+
+    If (model_data%both_surfaces%stat) Then
+      Write (message, '(a)')    ' ***IMPORTANT: The slab model has deposited species at both surfaces. Stoichiometries refer to&
+                               & only one side of the slab.'
       Call info(message, 1); Write (summary,'(a)') Trim(message)
     End If
 
@@ -1623,13 +1653,35 @@ Contains
     Character(Len=256) :: fileformat
     Character(Len=256) :: filename, path, modchar
     Character(Len=3)   :: ic_char
-
+    
+    Integer(Kind=wi)   :: nfixed , i, j, isp
+    
     fileformat=model_data%output_model_format%type
-  
     filename='SAMPLE.'//Trim(fileformat)
 
+    ! compute the geometrical centre of the slab, only if the "both_surfaces" directive is activated
+    If (model_data%both_surfaces%stat) Then
+      model_data%sample%slab_centre=0.0_wp
+      nfixed=0
+      Do isp = 1, model_data%types_species
+        Do j=1, model_data%sample%species(isp)%num_components
+          Do i=1, model_data%sample%num_atoms
+            If ((.Not. model_data%sample%atom(i)%vanish) .And.&
+               (Trim(model_data%sample%atom(i)%tag)==Trim(model_data%sample%species(isp)%component%tag(j))) ) Then
+              If (.Not. model_data%sample%species(isp)%change_content) Then
+                model_data%sample%slab_centre=model_data%sample%slab_centre+model_data%sample%atom(i)%r
+                nfixed=nfixed+1
+              End If
+            End If
+          End Do
+        End Do
+      End Do
+      model_data%sample%both_surfaces=.True.
+      model_data%sample%slab_centre=model_data%sample%slab_centre/Real(nfixed,Kind=wp)
+    End If
+    
     If (Trim(fileformat)=='vasp') Then
-      Call print_vasp_output(files, model_data%sample, model_data%types_species, model_data%selective_dyn, simulation_data)
+      Call print_vasp_output(files, model_data%sample, model_data%types_species, model_data%selective_dyn,  simulation_data)
     Else If (Trim(fileformat)=='cp2k') Then
       Call print_cp2k_output(files, model_data%sample, model_data%types_species, simulation_data)
     Else If (Trim(fileformat)=='castep') Then
@@ -1794,14 +1846,15 @@ Contains
 
   End Subroutine print_simulation_files 
 
-  Subroutine create_list_net_elements(T, types_species)
+  Subroutine create_list_net_elements(T, types_species, both_surfaces)
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     ! Create list for the atoms 
     !
     ! author    - i.scivetti May 2021
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     Type(sample_type), Intent(InOut) :: T
-    Integer(Kind=wi),  Intent(In   ) :: types_species     
+    Integer(Kind=wi),  Intent(In   ) :: types_species
+    Logical,           Intent(In   ) :: both_surfaces    
 
     Integer(Kind=wi) :: icount, isp, j, i, inat
 
@@ -1819,13 +1872,16 @@ Contains
         If (inat/=0) Then
           icount=icount+1
           T%list%N0(icount)=inat
+          If (T%species(isp)%change_content .And. both_surfaces) Then
+            T%list%N0(icount)=2*T%list%N0(icount)
+          End If
           T%list%tag(icount)=Trim(T%species(isp)%component%tag(j))
           T%list%element(icount)=Trim(T%species(isp)%component%element(j))   
           T%list%net_elements=T%list%net_elements+1
         End If
       End Do
     End Do
-
+    
   End Subroutine create_list_net_elements
 
   Subroutine print_cif_output(files, T, types_species, dynamics)
@@ -1839,9 +1895,9 @@ Contains
     Integer(Kind=wi),  Intent(In   ) :: types_species     
     Logical,           Intent(In   ) :: dynamics
 
-    Integer(Kind=wi) :: isp, i, j
-    Integer(Kind=wi) :: iunit
-    Character(Len=256)   :: message, exec_cif, exec_rm
+    Integer(Kind=wi)   :: isp, i, j
+    Integer(Kind=wi)   :: iunit, cmdstat
+    Character(Len=256) :: message, exec_cif, exec_rm
 
     exec_rm='rm POSCAR'
     ! Open OUTPUT_STRUCTURE file
@@ -1866,8 +1922,16 @@ Contains
             & Trim(T%atom(i)%tag)==Trim(T%species(isp)%component%tag(j))) Then
             If (dynamics) Then
               Write (iunit, '(3f20.12,3l3)') T%atom(i)%r, T%atom(i)%dynamics
+              If (T%species(isp)%change_content .And. T%both_surfaces) Then
+                T%inverted(:)=2.0_wp*T%slab_centre(:)-T%atom(i)%r(:)
+                Write (iunit, '(3f20.12,3l3)') T%inverted, T%atom(i)%dynamics
+              End If
             Else
-              Write (iunit, '(3f20.12)') T%atom(i)%r
+              Write (iunit, '(3f20.12,3l3)') T%atom(i)%r
+              If (T%species(isp)%change_content .And. T%both_surfaces) Then
+                T%inverted(:)=2.0_wp*T%slab_centre(:)-T%atom(i)%r(:)
+                Write (iunit, '(3f20.12)') T%inverted
+              End If
             End If
           End If
         End Do
@@ -1876,14 +1940,15 @@ Contains
 
     ! Close file
     Close(iunit)
-
-    exec_cif= 'python cif-output-geom.py'
-    Call execute_command_line(exec_cif, Exitstat=i)
-    If (i/=0) Then
+    exec_cif= 'python3 cif-output-geom.py'
+    Call execute_command_line(exec_cif, Cmdstat=cmdstat, Exitstat=i)
+    If (cmdstat/=0 .Or. i/=0) Then
       Call info(' ', 1)
-      Write (message,'(1x,a)') '***ERROR: Are Python and ASE installed in your machine?'
+      Write (message,'(1x,a)') '***ERROR: It looks python3 and/or ASE are NOT installed in your machine. Please&
+                              & install the missing bits and rerun.'
+      Call info(message, 1)
       Call execute_command_line(exec_rm)
-      Call error_stop(message)      
+      Call error_stop(' ')      
     End If   
 
     Call execute_command_line(exec_rm)
@@ -1904,7 +1969,6 @@ Contains
 
     Integer(Kind=wi) :: isp, i, j
     Integer(Kind=wi) :: iunit
-
 
     ! Open OUTPUT_STRUCTURE file
     Open(Newunit=files(FILE_OUTPUT_STRUCTURE)%unit_no, File=files(FILE_OUTPUT_STRUCTURE)%filename,Status='Replace')
@@ -1928,8 +1992,16 @@ Contains
             & Trim(T%atom(i)%tag)==Trim(T%species(isp)%component%tag(j))) Then
             If (dynamics) Then
               Write (iunit, '(3f20.12,3l3)') T%atom(i)%r, T%atom(i)%dynamics
+              If (T%species(isp)%change_content .And. T%both_surfaces) Then
+                T%inverted(:)=2.0_wp*T%slab_centre(:)-T%atom(i)%r(:)
+                Write (iunit, '(3f20.12,3l3)') T%inverted, T%atom(i)%dynamics
+              End If
             Else
-              Write (iunit, '(3f20.12)') T%atom(i)%r
+              Write (iunit, '(3f20.12,3l3)') T%atom(i)%r
+              If (T%species(isp)%change_content .And. T%both_surfaces) Then
+                T%inverted(:)=2.0_wp*T%slab_centre(:)-T%atom(i)%r(:)
+                Write (iunit, '(3f20.12)') T%inverted
+              End If
             End If
           End If
         End Do
@@ -1966,6 +2038,9 @@ Contains
           If ((.Not. T%atom(i)%vanish) .And. &
             & Trim(T%atom(i)%tag)==Trim(T%species(isp)%component%tag(j))) Then
             ntot=ntot+1
+            If(T%species(isp)%change_content .And. T%both_surfaces) Then
+              ntot=ntot+1
+            End If
           End If
         End Do
       End Do
@@ -1985,6 +2060,10 @@ Contains
           If ((.Not. T%atom(i)%vanish) .And. &
             & Trim(T%atom(i)%tag)==Trim(T%species(isp)%component%tag(j))) Then
             Write (iunit,'(a,2x,3f20.12)') Trim(T%atom(i)%tag), T%atom(i)%r
+              If (T%species(isp)%change_content .And. T%both_surfaces) Then
+                T%inverted(:)=2.0_wp*T%slab_centre(:)-T%atom(i)%r(:)
+                Write (iunit,'(a,2x,3f20.12)') Trim(T%atom(i)%tag), T%inverted
+              End If
           End If
         End Do
       End Do
@@ -2045,6 +2124,11 @@ Contains
                     Write (iunit,'(a,2x,3f20.12,4x,a,f5.2)') Trim(atom_tag), T%atom(i)%r, 'spin=', &
                                                         & simulation_data%dft%magnetization(k)%value 
                     loop=.False.
+                    If (T%species(isp)%change_content .And. T%both_surfaces) Then
+                      T%inverted(:)=2.0_wp*T%slab_centre(:)-T%atom(i)%r(:)
+                      Write (iunit,'(a,2x,3f20.12,4x,a,f5.2)') Trim(atom_tag), T%inverted, 'spin=', &
+                                                        & simulation_data%dft%magnetization(k)%value 
+                    End If
                   End If
                   k=k+1
                 End Do
@@ -2055,6 +2139,10 @@ Contains
                 atom_tag=Trim(T%atom(i)%element)
               End If
               Write (iunit,'(a,2x,3f20.12)') Trim(atom_tag), T%atom(i)%r
+              If (T%species(isp)%change_content .And. T%both_surfaces) Then
+                T%inverted(:)=2.0_wp*T%slab_centre(:)-T%atom(i)%r(:)
+                Write (iunit,'(a,2x,3f20.12)') Trim(atom_tag), T%inverted
+              End If
             End If
           End If
         End Do
@@ -2107,6 +2195,10 @@ Contains
           If ((.Not. T%atom(i)%vanish) .And. &
             & Trim(T%atom(i)%tag)==Trim(T%species(isp)%component%tag(j))) Then
               Write (iunit,'(a,2x,3f12.6)') Trim(T%atom(i)%tag), T%atom(i)%r
+              If (T%species(isp)%change_content .And. T%both_surfaces) Then
+                T%inverted(:)=2.0_wp*T%slab_centre(:)-T%atom(i)%r(:)
+                Write (iunit,'(a,2x,3f12.6)') Trim(T%atom(i)%tag), T%inverted
+              End If
           End If
         End Do
       End Do
@@ -2189,6 +2281,10 @@ Contains
                 ntot=ntot+1
               EndIf
               Write (iunit, '(3f16.8,3x,i3,5x,a2)') T%atom(i)%r, ntot, T%atom(i)%element
+              If (T%species(isp)%change_content .And. T%both_surfaces) Then
+                T%inverted(:)=2.0_wp*T%slab_centre(:)-T%atom(i)%r(:)
+                Write (iunit, '(3f16.8,3x,i3,5x,a2)') T%inverted, ntot, T%atom(i)%element
+              End If
             End If
         End Do
       End Do
@@ -2199,7 +2295,6 @@ Contains
     Close(iunit)
 
   End Subroutine print_siesta_output
-
 
   Subroutine print_xyz_output(files, T, types_species)
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -2221,6 +2316,9 @@ Contains
           If ((.Not. T%atom(i)%vanish) .And. &
             & Trim(T%atom(i)%tag)==Trim(T%species(isp)%component%tag(j))) Then
             ntot=ntot+1
+            If(T%species(isp)%change_content .And. T%both_surfaces) Then
+              ntot=ntot+1
+            End If
           End If
         End Do
       End Do
@@ -2239,6 +2337,10 @@ Contains
           If ((.Not. T%atom(i)%vanish) .And. &
             & Trim(T%atom(i)%tag)==Trim(T%species(isp)%component%tag(j))) Then
               Write (iunit,'(a,2x,3f12.6)') Trim(T%atom(i)%element), T%atom(i)%r
+              If (T%species(isp)%change_content .And. T%both_surfaces) Then
+                T%inverted(:)=2.0_wp*T%slab_centre(:)-T%atom(i)%r(:)
+                Write (iunit,'(a,2x,3f12.6)') Trim(T%atom(i)%element), T%inverted
+              End If
           End If
         End Do
       End Do
@@ -2288,6 +2390,7 @@ Contains
         If (T%input%species(i)%D_num>0) Then
            T%insert_species=.True.
         End If
+
       ElseIf (Trim(option)=='output') Then
         !Initialis
         T%sample%species(i)%D_num=0
@@ -2306,7 +2409,6 @@ Contains
            T%insert_species=.True.
         End If
       End If
-
 
     End Do   
 
@@ -2473,7 +2575,6 @@ Contains
           model_data%scan(index)=i
         End If
       End Do
-
     End If
 
     j=1
@@ -2513,7 +2614,7 @@ Contains
     Logical,            Intent(In   ) :: rotate 
 
     Character(Len=256)   :: messages(5)
-    Integer(Kind=wi), Dimension(3) :: ic
+    Integer(Kind=wi) :: ic(3)
     Integer(Kind=wi) :: i, j, l
     Real(Kind=wp) :: centre(3), a(3), b(3)
     Real(Kind=wp) :: r0_rot(max_at_species,3)
@@ -2533,6 +2634,8 @@ Contains
           If (T%species(isp)%topology=='molecule') Then
             If (rotate) Then  
               Call rotate_species(T%species(isp)%definition%r0, T%species(isp)%atoms_per_species, r0_rot)
+            Else
+              r0_rot=T%species(isp)%definition%r0
             End If
           Else
            r0_rot(1,:)=T%species(isp)%definition%r0(1,:)
@@ -2583,13 +2686,19 @@ Contains
           End If
           ic(1)=ic(1)+1
         End Do
-        ic(1)=1
-        ic(2)=ic(2)+1
+        If (nofit) then
+          ic(1)=1
+          ic(2)=ic(2)+1
+        End If
       End Do
-        ic(2)=1
-        ic(3)=ic(3)+1
+        If (nofit) then
+          ic(2)=1
+          ic(3)=ic(3)+1
+        End If
     End Do
 
+    scan=ic
+    
     If (nofit) Then
       Write (messages(1),'(2(a,i3),3a)') '***ERROR: fail to deposit unit ', junit, ' (out of ',&
                                T%species(isp)%D_num, ') for species "', Trim(T%species(isp)%tag), '"'
@@ -3107,7 +3216,7 @@ Contains
     Type(model_type),  Intent(InOut) :: model_data
 
     Logical            :: safe
-    Integer(Kind=wi)   :: i, ifolder
+    Integer(Kind=wi)   :: i, ifolder, cmdstat
     Character(Len=256) :: message, exec_cif
     Character(Len=256) :: messages(3)
     Character(Len=32 ) :: input_file, set_error, path_to_file
@@ -3149,13 +3258,13 @@ Contains
       Call execute_command_line(exec_cif, Exitstat=i) 
       exec_cif='mv '//Trim(path_to_file)//' '//Trim(path_to_file)//'.cif'
       Call execute_command_line(exec_cif, Exitstat=i) 
-      exec_cif= 'python cif-input-geom.py'
-      Call execute_command_line(exec_cif, Exitstat=i)
+      exec_cif= 'python3 cif-input-geom.py'
+      Call execute_command_line(exec_cif, Cmdstat=cmdstat, Exitstat=i)
       If (i/=0) Then
         Call info(' ', 1)
         Write (message,'(1x,4a)') Trim(set_error), 'Either ', Trim(path_to_file), ' file does not comply with the "cif"&
-                                   & format or there is an error in the file. Otherwise, is Python and ASE installed in&
-                                   & your machine?'
+                                   & format or there is an error in the file. Otherwise, are Python3 and ASE installed&
+                                   &in your machine?'
         exec_cif='rm input.cif '//Trim(input_file)
         Call execute_command_line(exec_cif)
         exec_cif='mv '//Trim(path_to_file)//'.cif '//Trim(path_to_file)
@@ -3209,7 +3318,7 @@ Contains
     Character(Len=*),    Intent(In   ) :: process
 
     Integer(Kind=wi) :: i, indx
-    Real(Kind=wp)    :: min_dist, max_dist
+    Real(Kind=wp)    :: min_dist
     Real(Kind=wp)    :: dist
     Real(Kind=wp)    :: r(3), shift(3), normal(3), level(3)
 
@@ -3261,36 +3370,60 @@ Contains
         model_data%input%atom(i)%r(:)=model_data%input%atom(i)%r(:)-shift(:)
       End Do
 
-      If (model_data%deposition_level%fread) Then
-        level=0.0_wp
-        model_data%deposition_level%value=model_data%deposition_level%value-shift(indx)
-        level(indx)=model_data%deposition_level%value
-        r(:)=model_data%input%cell(indx,:)
-        If ( Abs(model_data%deposition_level%value) >= norm2(r) .Or. Dot_product(level,normal) < 0.0_wp ) Then
-           Write (message, '(1x,a)') '***ERROR: innapropriate value of "deposition_level" for the input system.&
-                                    & Please check model and simulation box.'
-           Call error_stop(message)      
-        End If 
-        Write (message, '(1x,a)') 'IMPORTAT: The user has defined the point along the dimension perpendicular to the surface from&
-                                & which species will be added. Please check this setting is reasonable for the model.'
-        Call info(message, 1) 
-      Else
-        ! Find the atom with the largest component along the normal vector to the surface 
-        max_dist=-Huge(1.0_wp)
-        Do i = 1, model_data%input%num_atoms
-          r(:)=model_data%input%atom(i)%r(:)
-          dist=Dot_product(r,normal)
-          If (dist > max_dist) Then
-            max_dist = dist
-          End If 
-        End Do
-        model_data%deposition_level%value=max_dist 
-      End If
-
+      ! Shift deposition_level
+      level=0.0_wp
+      model_data%deposition_level%value=model_data%deposition_level%value-shift(indx)
+      level(indx)=model_data%deposition_level%value
+      r(:)=model_data%input%cell(indx,:)
+      If ( Abs(model_data%deposition_level%value) >= norm2(r) .Or. Dot_product(level,normal) < 0.0_wp ) Then
+         Write (message, '(1x,a)') '***ERROR: innapropriate value of "deposition_level" for the input system.&
+                                  & Please check model and simulation box.'
+         Call error_stop(message)      
+      End If 
     End If
     
   End Subroutine shift_structure
+  
+  Subroutine set_deposition_level(model_data)
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    ! Subroutine to shift the set of atomic coordinates to the origin 
+    !
+    ! author    - i.scivetti March 2021
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    Type(model_type),    Intent(InOut) :: model_data
 
+    Integer(Kind=wi) :: i, indx
+    Real(Kind=wp)    :: min_dist, max_dist
+    Real(Kind=wp)    :: dist
+    Real(Kind=wp)    :: r(3), normal(3), atom(3)
+
+    min_dist=Huge(1.0_wp)
+    normal=0.0_wp
+
+    If (Trim(model_data%normal_vector%type)=='c3') Then
+      indx=3
+    ElseIf (Trim(model_data%normal_vector%type)=='c2') Then
+      indx=2
+    ElseIf (Trim(model_data%normal_vector%type)=='c1') Then
+      indx=1
+    End If
+
+    r(:)=model_data%input%cell(indx,:)
+    Call normal_along_vector(r,normal)
+    ! Find the atom with the largest component along the normal vector to the surface 
+    max_dist=-Huge(1.0_wp)
+    Do i = 1, model_data%input%num_atoms
+      r(:)=model_data%input%atom(i)%r(:)
+      dist=Dot_product(r,normal)
+      If (dist > max_dist) Then
+        max_dist = dist
+        atom=r
+      End If 
+    End Do
+    model_data%deposition_level%value=atom(indx)
+    
+  End Subroutine set_deposition_level
+  
   Subroutine normal_along_vector(a,normal)
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     ! Subroutine to compute the normal corresponding to a lattice vector 
@@ -3325,12 +3458,13 @@ Contains
 
     Integer(Kind=wi) :: i, j
     Real(Kind=wp)    :: dist, dist0
-    Logical          :: changed_geo, error 
+    Logical          :: error 
 
     Real(Kind=wp)       :: a(3), b(3), r(3)
     Character(Len=256)  :: message, messages(2)
     Real(Kind=wp)       :: r0(model_data%input%num_atoms,3)
-    
+    Logical             :: changed_geo(model_data%input%num_atoms)
+
     Do i=1, model_data%input%num_atoms
       r0(i,:)=model_data%input%atom(i)%r(:)
     End Do
@@ -3343,8 +3477,8 @@ Contains
     ! Move all inside the ce
     Do i = 1, model_data%input%num_atoms
       r(:)=model_data%input%atom(i)%r(:)
-      Call check_PBC(r, model_data%input%cell, model_data%input%invcell, 1.0_wp, changed_geo)
-      If (changed_geo) Then
+      Call check_PBC(r, model_data%input%cell, model_data%input%invcell, 1.0_wp, changed_geo(i))
+      If (changed_geo(i)) Then
         model_data%input%atom(i)%r(:)=r(:)
       End If
     End Do
@@ -3352,16 +3486,18 @@ Contains
     ! Try to move atoms again....if any atom is now moved, there is an inconsistency
     ! between the coordinates and the cell 
     Do i =  1, model_data%input%num_atoms
-      r(:)=model_data%input%atom(i)%r(:)
-      Call check_PBC(r, model_data%input%cell, model_data%input%invcell, 1.0_wp, changed_geo)
-      If (changed_geo) Then
-        ! Once again. If any atom is now moved, there is an inconsistency
-        Call check_PBC(r, model_data%input%cell, model_data%input%invcell, 1.0_wp, changed_geo)
-      End If  
-      If (changed_geo) Then
-        Write (message,'(a,i4)') '***PROBLEMS with atom',  i
-        Call info(message, 1)
-        error=.True.
+      If (changed_geo(i)) Then
+        r(:)=model_data%input%atom(i)%r(:)
+        Call check_PBC(r, model_data%input%cell, model_data%input%invcell, 1.0_wp, changed_geo(i))
+        If (changed_geo(i)) Then
+          ! Once again. If any atom is now moved, there is an inconsistency
+          Call check_PBC(r, model_data%input%cell, model_data%input%invcell, 1.0_wp, changed_geo(i))
+        End If  
+        If (changed_geo(i)) Then
+          Write (message,'(a,i4)') '***PROBLEMS with atom',  i
+          Call info(message, 1)
+          error=.True.
+        End If
       End If
     End Do
 
@@ -3384,12 +3520,22 @@ Contains
         a(:)=r0(i,:)
         b(:)=r0(j,:)
         Call compute_distance_PBC(a, b, model_data%input%cell, model_data%input%invcell, dist0)
+
         If (Abs(dist-dist0)>length_tol) Then
           Write (message,'(a,2(i7,a))') '***PROBLEMS: Distance between atom ', i, ' and ', j, &
                                    &' does not comply with the crystal symmetry imposed by the cell vectors.'
           Call info(message,1)
           Call info(messages,1)
           Call error_stop(' ')
+        Else  
+          If (dist < min_intra) Then
+            Write (message,'(a,2(i7,a))') '***PROBLEMS: Distance between atom ', i, ' and ', j, &
+                                     &' is too short. It is likely that the cell dimensions are&
+                                     & shorter than the system size!'
+            Call info(message,1)
+            Call info(messages,1)
+            Call error_stop(' ')
+          End If
         End If
       End Do
     End Do
@@ -4277,7 +4423,7 @@ Contains
     ! PCB effect
     i=1
     flag=.True.
-    Do While (i < 4 .And. flag)
+    Do While (i< 4 .And. flag)
       Do ir = 1, 3
         If (v_direct(ir) > limit1) Then
            v_cart(:)= v_cart(:) - basis(ir,:)

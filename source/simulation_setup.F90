@@ -56,6 +56,7 @@ Module simulation_setup
     Character(Len=256) :: potential 
     Character(Len=8)   :: tag
     Character(Len=2)   :: element
+    Logical            :: defined
   End Type type_pseudo
 
   ! Type for extra directives 
@@ -82,6 +83,7 @@ Module simulation_setup
     Character(Len=2)   :: element
     Character(Len=256) :: basis
     Character(Len=256) :: type
+    Logical            :: defined
   End Type type_basis
 
   ! Type for magnetization
@@ -128,6 +130,8 @@ Module simulation_setup
   Type :: dft_type
     ! Flag to ensure DFT block is not defined more than once 
     Logical  :: generate=.False.
+    ! Flag to set spin polarised simulation 
+    Type(in_logic)  :: gapw 
     ! Type XC functional
     Type(in_string)  :: xc_level     
     ! Type XC version 
@@ -259,6 +263,7 @@ Module simulation_setup
     Type(in_param)    :: solvent_pressure      
     Type(in_param_array) :: surf_tension 
     Type(in_param)    :: smear_ion_width 
+    Logical           :: both_surfaces
   End Type solvation_onetep
 
   ! Type for Poisson-Boltzmann 

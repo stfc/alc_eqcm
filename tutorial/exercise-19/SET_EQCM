@@ -1,0 +1,140 @@
+# Test case for GC-DFT+implicit solven
+# Pt surface with H+ deposited in contact with few layers of water
+# Implicit solvent: andreussi, fixed cavity, SASA apolar corrections 
+# Electrolyte ions Na and Cl
+
+# Extract and analyse EQCM data
+###############################
+Analysis            Model_pristine_sample        # Model cycled samples 
+
+# Directive for stoichiometric analysis
+#######################################
+process            electrodeposition            # Type of process 
+
+#Stoichiometric species
+&Block_Species
+  number_species      3                        # Number of species
+# Name   Weight       Oxidation   s0   Type of variable
+  Pt    195.084       2.0         1.0  fixed
+  H2O    18.015       0.0         0.6666667  dependent
+  H+      1.008       1.0         0.25  dependent
+&End_Block_Species
+
+# Directive for building atomistic models
+#########################################
+&Block_Species_Components
+ # Pt 
+   Pt  1  crystal
+   Pt  Pt 1 
+  #Water
+   H2O   2  molecule  1.2
+   Ow  O  1 ||  Hw H  2 
+  #H+
+   H+    1  atom
+   H+ H  1
+&End_Block_Species_COMPONENTS
+
+&Block_input_composition
+tags     Pt    H+    Ow    Hw  
+amounts  48     0    32    64 
+&End_block_input_composition
+
+input_model_format   vasp
+output_model_format  onetep
+normal_vector        c3
+
+distance_cutoff 1.80 Angstrom
+repeat_input_model 2  2  1
+deposition_level  9.0 Angstrom
+
+shift_structure  .False.
+
+## Directives for setting simulations files
+###########################################
+&block_simulation_settings
+  simulation_type  relax_geometry
+  theory_level DFT
+
+ #DFT
+ &DFT_settings
+   XC_level         GGA
+   xc_version       PBE
+   energy_cutoff    800.0  eV
+   SCF_energy_tolerance 0.0001 eV
+   scf_steps        200
+   vdw   DFT-D2
+   smearing   fermi
+   mixing_scheme pulay
+
+   EDFT  True
+
+   &gcdft
+     reference_potential  -4.44 eV
+     electrode_potential   0.10 V
+     electron_threshold    1E-6
+   &end_gcdft
+
+   &ngwf
+     tags      H+    Pt    Ow    Hw
+     number    1      9     4     1   
+     radius   1.5    6.5   4.0   1.5 
+   &end_ngwf
+
+ &end_DFT_settings
+
+ #Ion-related
+ &motion_settings
+  ion_steps         1
+  relax_method      BFGS
+ &end_motion_settings
+
+ &solvation
+   in_vacuum_first T
+   cavity_model    fixed  
+   dielectric_function soft_sphere
+   permittivity_bulk   90.7       
+   smear_ion_width     0.8  Bohr 
+
+   soft_sphere_delta 0.5
+
+   &soft_sphere_radii
+     tags      Pt    Ow      Hw     H+
+     values    3.328 3.311 2.644   2.644
+   &end_soft_sphere_radii
+
+   sasa_definition density isosurface
+   apolar_terms  sasa 
+   solvent_surface_tension 0.0506 N m-1
+   apolar_scaling  0.1
+ &end_solvation
+
+ &electrolyte
+   solver  full 
+   Boltzmann_temperature  300.0 K
+   neutral_scheme         counterions_auto
+   steric_potential       smoothed-hard-core   
+
+   &boltzmann_ions
+     number_boltzmann_ions  2 
+     tags          Na    Cl   
+     charge        1     -1     
+     conc         1.0    1.0  
+   &end_boltzmann_ions
+
+   &solvent_radii
+     tags      H+    Pt    Ow    Hw
+     values   3.5   3.5   3.5   3.5
+   &end_solvent_radii
+ &end_electrolyte 
+
+ &extra_directives
+   edft_ham_diis_size : 30
+   mg_max_iters_vcycle : 500
+   mg_vcyc_smoother_iter_pre: 4
+   mg_vcyc_smoother_iter_post: 4
+   mg_max_res_ratio: 1000.0
+   mg_max_iters_newton: 300 
+ &end_extra_directives
+
+&end_block_simulation_settings
+

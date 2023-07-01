@@ -1,10 +1,10 @@
 # Input directives for massogram analysis
 # Case: Electrodeposition of Sb on Pt
-Software Metrohm               # Acquisition software (optional)
-Analysis massogram             # Characterization of EQCM data
-V_to_Hz 200.0                  # Transformation factor
-Sauerbrey -0.0566 Hz ng-1 cm2  # Sauerbrey factor
-Quartz_freq 5.0 MHz            # Quartz frequency
-scan_rate 0.05 V s-1           # Scan rate
-Cycles  1  1                   # Cycle range 
-	
+Software         Metrohm               # Acquisition software (optional)
+Analysis         massogram             # Characterization of EQCM data
+V_to_Hz          200.0                 # Transformation factor
+Sauerbrey       -0.0566 Hz ng-1 cm2    # Sauerbrey factor
+Quartz_freq      5.0 MHz               # Quartz frequency
+scan_rate        0.05 V s-1            # Scan rate
+Cycles           1  1                  # Cycle range 
+Current_offset  .True.                 # Offset current	

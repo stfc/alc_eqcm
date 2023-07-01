@@ -1,0 +1,24 @@
+# Input directives for quantitative stoichiometry analysis consistent with EQCM data 
+# Case: Intercalation/De-intercalation of  H+ and H2O in Ti_3C_2T_x (data provided by Zifeng Li) 
+
+# Extract and analyse EQCM data
+###############################
+Software            CH-Inst                    # Acquisition software (optional)
+Analysis            fluxes                     # Integrated charge and total mass 
+#Filter_cutoff       0.25 Hz
+
+# Directive for stoichiometric analysis
+#######################################
+process            intercalation               # Type of process 
+efficiency         1.00
+current_offset    .False.
+electrode_mass    17.290 ug  
+
+#Stoichiometric species
+&Block_Species
+  number_species      3  # Number of species
+# Name   Weight       Oxidation    s0   Type of variable
+  Ti3C2Tx   186.83      0.0        1.0   fixed     
+  H+        1.008       1.0        0.0   dependent
+  H2O      18.015       0.0        1.0   dependent 
+&End_Block_Species

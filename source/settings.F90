@@ -417,6 +417,10 @@ Contains
         Call set_read_status(word, io, model_data%normal_vector%fread, model_data%normal_vector%fail,&
                            & model_data%normal_vector%type)
 
+      Else If (word(1:length) == 'both_surfaces') Then 
+        Read (iunit, Fmt=*, iostat=io) word, model_data%both_surfaces%stat
+        Call set_read_status(word, io, model_data%both_surfaces%fread, model_data%both_surfaces%fail)
+
       !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
       ! Specifications of settings to build simulation files 
       !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -518,12 +522,15 @@ Contains
        eqcm_data%analysis%type /= 'mass_calibration'        .And.  &
        eqcm_data%analysis%type /= 'massogram'               .And.  &
        eqcm_data%analysis%type /= 'characterization'        .And.  &
+       eqcm_data%analysis%type /= 'fluxes'                  .And.  &
        eqcm_data%analysis%type /= 'stoichiometry'           .And.  &
        eqcm_data%analysis%type /= 'model_pristine_sample'   .And.  &
        eqcm_data%analysis%type /= 'model_cycled_sample'     .And.  &
        eqcm_data%analysis%type /= 'model_disordered_system' .And.  &
        eqcm_data%analysis%type /= 'hpc_simulation_files' ) Then 
-      Write (messages(1),'(1x,a)')  'Possibe settings for option "analysis" are:'
+      Write (message,'(2(1x,a))')  Trim(error_set_eqcm), 'No (or wrong) specification for directive "analysis"' 
+      Call info(message, 1)
+      Write (messages(1),'(1x,a)')  'Possible settings for option "analysis" are:'
       Write (messages(2),'(1x,a)')  '- Spectra'
       Write (messages(3),'(1x,a)')  '- Print_EQCM_raw'
       Write (messages(4),'(1x,a)')  '- Print_EQCM_filter'
@@ -536,9 +543,7 @@ Contains
       Write (messages(11),'(1x,a)') '- Model_disordered_system' 
       Write (messages(12),'(1x,a)') '- hpc_simulation_files'
       Call info(messages,12)
-      Call info(' ',1)
-      Write (message,'(2(1x,a))')  Trim(error_set_eqcm), 'No (or wrong) specification for directive "analysis"' 
-      Call error_stop(message) 
+      Call error_stop(' ') 
     Else
       Call info(' ',1)
       Write (message,'(1x,2a)') 'Requested analysis: ', Trim(eqcm_data%analysis%type)
@@ -587,6 +592,11 @@ Contains
         Write (messages(2),'(1x,a)')  'and mass, as well as the variables defined in &block_species. The outcome depends on'
         Write (messages(3),'(1x,a)')  'the type of process under consideration: "intercalation" or "electrodeposition".'
         Call info(messages,3)
+      Else If (eqcm_data%analysis%type == 'fluxes' ) Then
+        Write (messages(1),'(1x,a)')  'This option computes the stoichiometric changes along the CV scan from the accumulated'
+        Write (messages(2),'(1x,a)')  'charge and mass, as well as the variables defined in &block_species. From the computed'
+        Write (messages(3),'(1x,a)')  'stoichiometry values, mole fluxes and ionic currents are obtained.'
+        Call info(messages,3)
       Else If (eqcm_data%analysis%type == 'model_cycled_sample' ) Then
         Write (messages(1),'(1x,a)')  'This option generates atomistic models compatible with EQCM data and the definition'
         Write (messages(2),'(1x,a)')  'of the participating species in &block_species.'
@@ -628,28 +638,14 @@ Contains
       fprint=.False.
     End If
     
-    ! Create folder ANALYSIS
-    If (eqcm_data%analysis%type /= 'hpc_simulation_files'    .And. &
-        eqcm_data%analysis%type /= 'model_disordered_system' .And. &
-        eqcm_data%analysis%type /= 'model_pristine_sample') Then
-       Call execute_command_line('[ ! -d '//Trim(FOLDER_ANALYSIS)//' ] && '//'mkdir '//Trim(FOLDER_ANALYSIS)) 
-    End If
-
     If (fprint) Then
       Write (messages(1),'(1x,a)') 'Relevant EQCM settings'
       Write (messages(2),'(1x,a)') '======================'
       Call info(messages,2)
     End If
 
-
     ! Check the type of software used for collecting EQCM data
-    If (eqcm_data%software%fread) Then
-      If (eqcm_data%software%type/='qcm200'  .And. &
-         eqcm_data%software%type/='metrohm'  .And. &
-         eqcm_data%software%type/='ch-inst') Then
-         eqcm_data%software%warn=.True.
-      End If
-    Else
+    If (.Not. eqcm_data%software%fread) Then
       eqcm_data%software%type='Not specified'
     End If
 
@@ -789,9 +785,9 @@ Contains
         Write (message,'(1x,2(a,f6.3),a)') 'Voltage range:   ', eqcm_data%voltage_range%value(1), '  to  ', &
                                           & eqcm_data%voltage_range%value(2), ' [V]'
         If (fprint) Call info(message,1)
-        If (eqcm_data%analysis%type == 'spectra') Then
-           Write (message,'(2(1x,a))') Trim(error_set_eqcm), 'Specification of "voltage_range" is incompatible&
-                                       & with "spectra" analysis. Please remove it and rerun.'
+        If (Trim(eqcm_data%analysis%type) == 'spectra') Then
+           Write (message,'(a)') Trim(error_set_eqcm)//' Specification of "voltage_range" is incompatible with&
+                                & the "'//Trim(eqcm_data%analysis%type)//'" analysis. Please remove it and rerun.'
            Call error_stop(message)
         End If 
       End If
@@ -824,12 +820,8 @@ Contains
                                   & "current_offset" (choose either .True. or .False.)'
         Call error_stop(message)
       End If
-    Else
-      eqcm_data%current_offset%warn=.True.
-      eqcm_data%current_offset%stat=.True. 
     End If
-
-           
+          
     ! System directives 
     !!!!!!!!!!!!!!!!!!!
     If (electrode_data%area_geom%fread) Then
@@ -1088,6 +1080,7 @@ Contains
   ! Stoichiometric directives
   !!!!!!!!!!!!!!!!!!!!!!!!!!!
     If (eqcm_data%analysis%type == 'stoichiometry' .Or. & 
+       eqcm_data%analysis%type == 'fluxes'         .Or. & 
        eqcm_data%analysis%type == 'model_pristine_sample' .Or. &
        eqcm_data%analysis%type == 'model_disordered_system' .Or. &
        eqcm_data%analysis%type == 'model_cycled_sample') Then
@@ -1110,8 +1103,18 @@ Contains
           Call info(messages,5)
         End If
     End If
-
-    If (eqcm_data%analysis%type == 'stoichiometry' .Or. & 
+    
+    If (eqcm_data%analysis%type == 'fluxes') Then
+      If (eqcm_data%process%type == 'electrodeposition') Then
+        Write (message,'(2(1x,a))') Trim(error_set_eqcm), 'The option "fluxes" for analysis is only implemented&
+                                  & for intercalation processes. ALC_EQCM apologises for the inconvenience....'
+        Call info(message, 1)
+        Call error_stop(' ')
+      End If
+    End If   
+       
+    If (eqcm_data%analysis%type == 'stoichiometry' .Or. &
+        eqcm_data%analysis%type == 'fluxes'        .Or. &
        eqcm_data%analysis%type == 'model_cycled_sample') Then
 
       If (eqcm_data%efficiency%fread) Then
@@ -1168,7 +1171,7 @@ Contains
 
        If (stoich_data%block_constraints%fread) Then
          If (Trim(eqcm_data%process%type)=='intercalation') Then
-           Call check_constraints_settings(files, stoich_data) 
+           Call check_constraints_settings(files, stoich_data, eqcm_data%analysis%type) 
          If (stoich_data%num_variables < 3) Then
            stoich_data%block_constraints%warn=.True.
          End If
@@ -1382,7 +1385,22 @@ Contains
         model_data%shift_structure%stat=.True.
       End If
 
+      ! Deposition level 
+      If (model_data%both_surfaces%fread) Then
+        If (eqcm_data%process%type /= 'electrodeposition') Then
+          Write (message,'(2(1x,a))') Trim(error_set_eqcm), 'Definition of "both_surfaces" directive is only&
+                                     & compatible with option "electrodeposition" for directive "process".'
+          Call error_stop(message)
+        End If
+        If (model_data%both_surfaces%fail) Then
+          Write (message,'(2(1x,a))') Trim(error_set_eqcm), 'Wrong settings for "both_surfaces" directive.'
+          Call error_stop(message)
+        End If
+      Else
+        model_data%both_surfaces%stat=.False.
+      End If
 
+      
       ! stoichiometry error
       If (model_data%stoichiometry_error%fread) Then
         If (model_data%stoichiometry_error%fail) Then
@@ -1444,12 +1462,13 @@ Contains
            Call error_stop(' ')
         End If
       Else If (Trim(eqcm_data%analysis%type) == 'model_pristine_sample' .Or. &
-              Trim(eqcm_data%analysis%type) /= 'model_disordered_system' .Or. &
+              Trim(eqcm_data%analysis%type) == 'model_disordered_system' .Or. &
               Trim(eqcm_data%analysis%type) == 'model_cycled_sample') Then  
         If (simulation_data%generate) Then
           simulation_data%code_format=model_data%output_model_format%type
           simulation_data%process=eqcm_data%process%type
           simulation_data%normal_vector=model_data%normal_vector%type
+          simulation_data%solvation%both_surfaces=model_data%both_surfaces%stat 
           Call check_simulation_settings(files, stoich_data, simulation_data)
         End If
         If (hpc_data%generate) Then
@@ -1478,30 +1497,42 @@ Contains
       End If
     End If
 
-    ! Write warnings
-    !!!!!!!!!!!!!!!!
-    If (eqcm_data%current_offset%warn) Then
-       If (eqcm_data%analysis%type /= 'print_eqcm_raw'    .And. &
-           eqcm_data%analysis%type /= 'print_eqcm_filter' .And. &
-           eqcm_data%analysis%type /= 'spectra'  )Then
-         If (fprint) Call info(' ',1)
-         Write (messages(1),'(1x,a)') '***IMPORTANT: By default, the offset for EQCM current is activated. If the user wants to'
-         Write (messages(2),'(1x,a)') '   deactivate the offset, directive "current_offset" must be set to .False.'
-         If (fprint) Call info(messages,2)
-       End If
+    ! Check status of current offset 
+    If (eqcm_data%analysis%type /= 'print_eqcm_raw'          .And. &
+        eqcm_data%analysis%type /= 'print_eqcm_filter'       .And.  &
+        eqcm_data%analysis%type /= 'model_pristine_sample'   .And.  &
+        eqcm_data%analysis%type /= 'model_disordered_system' .And.  &
+        eqcm_data%analysis%type /= 'spectra') Then
+      If (eqcm_data%current_offset%fread) Then
+        If (eqcm_data%current_offset%stat) Then
+          Write (messages(1),'(1x,a)') '*** IMPORTANT: by specification of the "current_offset" directive, the CV current will'
+          Write (messages(2),'(1x,a)') '    be offset using the initial value. To remove the offset, set "current_offset" to&
+                                       & .False.'
+        Else
+          Write (messages(1),'(1x,a)') '*** IMPORTANT: by specification of the "current_offset" directive, the values of the&
+                                       & CV current will be used as reported'
+          Write (messages(2),'(1x,a)') '    in the DATA_EQCM file. To offset the CV current (using the initial value for the&
+                                       & current), set "current_offset" to .True.' 
+        End If
+        Call info(' ', 1)
+        Call info(messages,2)
+      Else
+        Call info(' ', 1)
+        Write (messages(1),'(2(1x,a))')  Trim(error_set_eqcm), 'The selected option for the "analysis" directive needs the'
+        Write (messages(2),'(1x,a)')    'definition of the "current_offset" directive, which must be set to .True. or .False.'
+        Write (messages(3),'(1x,a)')    'depending on the CV profile and the problem under consideration. Please amend and rerun.'
+        Call info(messages, 3)
+        Call error_stop(' ')
+      End If 
     End If
 
-    If (eqcm_data%software%warn) Then
-      If (fprint) Call info(' ',1)
-      Write (message,'(1x,a)') '***WARNING: Check specification for directive "software".' 
-      If (fprint) Call info(message,1)
-    end If
-
     If (eqcm_data%range_cycles%warn) Then
-      If (fprint) Call info(' ',1)
       Write (messages(1),'(1x,a)') '***IMPORTANT: Directive "cycles" (cycle range) has not been specified.'
       Write (messages(2),'(1x,a)') '   Thus, all CV cycles will be considered in the analysis.'
-      If (fprint) Call info(messages, 2)
+      If (fprint) Then
+        Call info(' ',1)
+        Call info(messages, 2)
+      End If
     End If
 
     If (stoich_data%block_constraints%warn) Then
@@ -1510,6 +1541,13 @@ Contains
       If (fprint) Then
         Call info(messages,1)
       End If 
+    End If
+
+    ! Create folder ANALYSIS
+    If (eqcm_data%analysis%type /= 'hpc_simulation_files'    .And. &
+        eqcm_data%analysis%type /= 'model_disordered_system' .And. &
+        eqcm_data%analysis%type /= 'model_pristine_sample') Then
+       Call execute_command_line('[ ! -d '//Trim(FOLDER_ANALYSIS)//' ] && '//'mkdir '//Trim(FOLDER_ANALYSIS)) 
     End If
 
     ! refresh out_eqcm
@@ -1594,6 +1632,7 @@ Contains
 
     If (.Not. (eqcm_data%mass_frequency%fread .Or. eqcm_data%mass%fread) ) Then
       If (eqcm_data%analysis%type == 'stoichiometry'    .Or.  &
+          eqcm_data%analysis%type == 'fluxes'           .Or.  &
          eqcm_data%analysis%type == 'model_cycled_sample' ) Then
          Write (message,'(8(1x,a))') Trim(error_set), 'No values for mass-frequency or mass found in', Trim(data_eqcm),&
                                  &'file. Requested', Trim(eqcm_data%analysis%type),'analysis in file', Trim(set_eqcm),&
@@ -1604,6 +1643,7 @@ Contains
 
     If ((.Not. eqcm_data%current%fread)) Then
       If (eqcm_data%analysis%type == 'stoichiometry'    .Or.  &
+          eqcm_data%analysis%type == 'fluxes'           .Or.  &
          eqcm_data%analysis%type == 'model_cycled_sample' ) Then
          Write (message,'(8(1x,a))') Trim(error_set), 'No values for current found in', Trim(data_eqcm),&
                                  &'file. Requested', Trim(eqcm_data%analysis%type),'analysis in file', Trim(set_eqcm),&
@@ -3673,6 +3713,10 @@ Contains
         Read (iunit, Fmt=*, iostat=io) word, T%dft%spin_polarised%stat
         Call set_read_status(word, io, T%dft%spin_polarised%fread, T%dft%spin_polarised%fail)
 
+      Else If (word(1:length) == 'gapw') Then 
+        Read (iunit, Fmt=*, iostat=io) word, T%dft%gapw%stat
+        Call set_read_status(word, io, T%dft%gapw%fread, T%dft%gapw%fail)
+
       Else If (word(1:length) == 'energy_cutoff') Then
         Read (iunit, Fmt=*, iostat=io) word, T%dft%encut%value, T%dft%encut%units
         Call set_read_status(word, io, T%dft%encut%fread, T%dft%encut%fail)
@@ -3872,6 +3916,7 @@ Contains
     Character(Len=265) :: set_error
 
     set_error = '***ERROR in &basis_set (inside &dft_settings):'
+    simulation_data%dft%basis_set(:)%defined=.False.
 
     i=1
     Do While (i<= simulation_data%total_tags)
@@ -3881,6 +3926,7 @@ Contains
         Call check_for_rubbish(iunit, '&basis_set (inside &dft_settings)')
         Read (iunit, Fmt=*, iostat=io) simulation_data%dft%basis_set(i)%tag, simulation_data%dft%basis_set(i)%type
         Call capital_to_lower_case(simulation_data%dft%basis_set(i)%type)
+        simulation_data%dft%basis_set(i)%defined=.True.
         i=i+1  
       End If
     End Do
@@ -3901,13 +3947,21 @@ Contains
       If (word /= '&end_basis_set') Then
         If (word(1:1) /= '#') Then
           Write (message,'(2a)') Trim(set_error), ' It seems the user has provided wrong or additional information.&
-                               & This must be closed with sentence "&end_basis_set"'
+                               & Have you defined all the elements? This block must be closed with sentence "&end_basis_set"'
           Call error_stop(message)
         End If
       Else
           endblock=.True.
       End If
     End Do
+
+    Do i=1, simulation_data%total_tags
+      If (.Not. simulation_data%dft%basis_set(i)%defined) Then
+        Write (message,'(2a)') Trim(set_error), ' The basis set for species "'//Trim(simulation_data%dft%basis_set(i)%tag)//'"& 
+                             & has not been defined. Please add the specification and rerun'
+        Call error_stop(message)
+      End If
+    End Do    
 
   End Subroutine read_basis_set
 
@@ -3930,6 +3984,7 @@ Contains
     Character(Len=265) :: set_error
 
     set_error = '***ERROR in &pseudo_potentials (inside &dft_settings):'
+    simulation_data%dft%pseudo_pot(:)%defined=.False.
 
     i=1
     Do While (i<= simulation_data%total_tags)
@@ -3938,6 +3993,7 @@ Contains
       If (word(1:1)/='#') Then
         Call check_for_rubbish(iunit, '&pseudo_potentials (inside &dft_settings)')
         Read (iunit, Fmt=*, iostat=io) simulation_data%dft%pseudo_pot(i)%tag, simulation_data%dft%pseudo_pot(i)%file_name
+        simulation_data%dft%pseudo_pot(i)%defined=.True.
         i=i+1
       End If
     End Do
@@ -3958,13 +4014,23 @@ Contains
       If (word /= '&end_pseudo_potentials') Then
         If (word(1:1) /= '#') Then
           Write (message,'(2a)') Trim(set_error), ' It seems the user has provided wrong or additional information.&
-                               & This block must be closed with sentence "&end_pseudo_potentials"'
+                               & Have you defined all the elements? This block must be closed with sentence&
+                               & "&end_pseudo_potentials"'
           Call error_stop(message)
         End If
       Else
           endblock=.True.
       End If
     End Do
+
+    Do i=1, simulation_data%total_tags
+      If (.Not. simulation_data%dft%pseudo_pot(i)%defined) Then
+        Write (message,'(2a)') Trim(set_error), ' The pseudopotential for species "'&
+                             &//Trim(simulation_data%dft%pseudo_pot(i)%tag)//'"& 
+                             & has not been defined. Please add the specification and rerun'
+        Call error_stop(message)
+      End If
+    End Do    
 
   End Subroutine read_pseudo_poptentials
 
