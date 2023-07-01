@@ -481,7 +481,7 @@ Contains
     units=' ' 
 
     ! Remove separators (\/) and parenthesis "{[()]}" (if present)
-    Call remove_symbols(header,'/|\')
+    Call remove_symbols(header,'/|\#')
     Call remove_symbols(header,'{[()]}')
 
     Read (header, Fmt=*, iostat=io) (variables(i), units(i),  i=1,eqcm_data%columns) 
@@ -567,7 +567,7 @@ Contains
           eqcm_data%charge%convert  = 0.000001_wp
         Else
           Write (message,fmt1) Trim(error_set), 'Specified units "', Trim(eqcm_data%charge%units),&
-                                    & '" for charge is not valid. Options: C, mC (mili), uC (micro) or nC (nano).',&
+                                    & '" for charge is not valid. Options: C, mC (mili), uC (micro) or nC (nano). ',&
                                     & check_header 
           Call error_stop(message)
         End If
@@ -585,10 +585,12 @@ Contains
           eqcm_data%mass%convert  = 1000.0_wp
         Else If (eqcm_data%mass%units   == 'ng') Then
           eqcm_data%mass%convert  = 1.0_wp
+        Else If (eqcm_data%mass%units   == 'g') Then
+          eqcm_data%mass%convert  = 1.0E+9_wp
         Else
           Write (message,fmt1) Trim(error_set), 'Specified units "', Trim(eqcm_data%mass%units),&
-                                    & '" for mass is not valid. Options: mg (miligrams), ug (micrograms) or ng (nanograms).',&
-                                    & check_header 
+                                    & '" for "mass" is not valid. Options: g(grams), mg (miligrams), ug (micrograms)&
+                                    & or ng (nanograms). ', check_header 
           Call error_stop(message)
         End If
         eqcm_data%charge%units    = 'ng'
@@ -625,8 +627,9 @@ Contains
         eqcm_data%resistance%fread    = .True.
         eqcm_data%resistance%units    = units(i)
         
-        If (eqcm_data%resistance%units /= 'v') Then
-          Write (message,'(1x,2a)') Trim(error_set), 'Specified units for resistance is different from "V" (Volts).', check_header
+        If (eqcm_data%resistance%units /= 'v' .And. eqcm_data%resistance%units /= 'ohm') Then
+          Write (message,'(1x,3a)') Trim(error_set), 'Specified units for resistance is different from "V" (Volts)&
+                                  & and "Ohm". ', check_header
           Call error_stop(message)
         End If
         ic=ic+1
@@ -1486,6 +1489,8 @@ Contains
           End If
 
           If (eqcm_data%mass%fread) Then
+              Call fft_setup(fft_data, npoints, eqcm_data%mass%value(:,j,i), domain, fft_data%end_mass%value)
+              Call filter_data(fft_data, filter, npoints, eqcm_data%mass%value(:,j,i))
           Else        
             If (eqcm_data%mass_frequency%fread) Then
               Call fft_setup(fft_data, npoints, eqcm_data%mass_frequency%value(:,j,i), domain, fft_data%end_mass%value)

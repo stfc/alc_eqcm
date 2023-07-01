@@ -313,6 +313,13 @@ Contains
       Call error_stop(message)
     End If
 
+    ! GAPW 
+    If (simulation_data%dft%gapw%stat) Then
+      Write (message,'(2(1x,a))') Trim(error_dft), 'Requested "Gaussian Augmented Plane Waves" method via the "gapw"&
+                                 & directive is not possible for CASTEP simulations. Please remove it'
+      Call error_stop(message)
+    End If
+
    ! Energy cutoff 
     If (Trim(simulation_data%dft%encut%units)/='ev') Then
        Write (message,'(2(1x,a))') Trim(error_dft), &

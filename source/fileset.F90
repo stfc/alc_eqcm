@@ -77,9 +77,16 @@ Module fileset
   Integer(Kind=wi), Parameter, Public :: FILE_RECORD_MODELS = 22
   ! MODEL_SUMMARY file 
   Integer(Kind=wi), Parameter, Public :: FILE_MODEL_SUMMARY = 23
+  ! MOLE_FLUX_OX file 
+  Integer(Kind=wi), Parameter, Public :: FILE_MOLE_FLUX = 24
+  ! IONIC_CURRENT_OX file 
+  Integer(Kind=wi), Parameter, Public :: FILE_IONIC_CURRENT = 25
+  ! CV_MOLES_OX file 
+  Integer(Kind=wi), Parameter, Public :: FILE_CV_MOLES = 26
 
+  
   ! Size of filename array
-  Integer(Kind=wi), Parameter, Public :: NUM_FILES = 23
+  Integer(Kind=wi), Parameter, Public :: NUM_FILES = 26
 
   ! Folder data
   Character(Len=256), Public :: FOLDER_MODELS     = "ATOMISTIC_MODELS"
@@ -155,11 +162,15 @@ Contains
     set_names(FILE_HPC_SETTINGS)     = "HPC_SETTINGS"
     set_names(FILE_RECORD_MODELS)    = "RECORD_MODELS"
     set_names(FILE_MODEL_SUMMARY)    = "MODEL_SUMMARY"
+    set_names(FILE_MOLE_FLUX)        = "MOLE_FLUX"
+    set_names(FILE_IONIC_CURRENT)    = "IONIC_CURRENT"
+    set_names(FILE_CV_MOLES)         = "CV_MOLES"
 
     ! Set default filenames
     Do file_no = 1, NUM_FILES
       Call files(file_no)%init(set_names(file_no))
     End Do
+    
   End Subroutine set_names_files
 
 
@@ -211,10 +222,10 @@ Contains
 
     Write (header(1), fmt1)   Repeat("#", 74)
     Write (header(2), fmt2)  "#                      WELCOME TO ", Trim(code_name),  Repeat(" ", 31)//"#"
-    Write (header(3), fmt1)  "#  SCD/ALC program for Electrochemical analysis and atomistic modeling   #"
-    Write (header(4), fmt1)  "#  using Electrochemical Quartz Crystal Microbalance (EQCM) experiments  #"
-    Write (header(5), fmt3)  "#  version:  ", Trim(code_VERSION), Repeat(' ',55),                     "#"
-    Write (header(6), fmt3)  "#  release:  ", Trim(date_RELEASE), Repeat(' ',52),                     "#"
+    Write (header(3), fmt1)  "#  A software that processes Electrochemical Quartz Crystal Microbalance #"
+    Write (header(4), fmt1)  "#  (EQCM) data to compute stoichiometries and generate atomistic models  #"
+    Write (header(5), fmt3)  "#  version:  ", Trim(code_VERSION), Repeat(' ',57),                     "#"
+    Write (header(6), fmt3)  "#  release:  ", Trim(date_RELEASE), Repeat(' ',51),                     "#"
     Write (header(7), fmt1)  "#                                                                        #"
     Write (header(8), fmt1)  "#  Copyright:  2022  Ada Lovelace Centre (ALC)                           #"
     Write (header(9), fmt1)  "#              Scientific Computing Department (SCD)                     #"
@@ -255,6 +266,30 @@ Contains
     Write (appex(6), fmt1)  "#                                 #" 
     Write (appex(7), fmt1)   Repeat("#", 35)
     Call info(appex, 7)
+
+    Write (appex(1), fmt1)  "#" 
+    Write (appex(2), fmt2)  "#  Please cite the following work in publications making use of ", Trim(code_name), ":"  
+    Call info(appex, 2)
+
+    Write (appex(1), fmt1)  "#" 
+    Write (appex(2), fmt1)  "#  1) Quantitative Resolution of Complex Stoichiometric Changes During Electrochemical Cycling"
+    Write (appex(3), fmt1)  "#     by Density Functional Theory Assisted, Electrochemical Quartz Crystal Microbalance."
+    Write (appex(4), fmt1)  "#     T-H. Wu; I. Scivetti; J-C. Chen; J-A. Wang; G. Teobaldi, C-C Hu; L.J. Hardwick." 
+    Write (appex(5), fmt1)  "#     ACS Appl. Energy Mater. 3, 4, 3347–3357 (2020), https://doi.org/10.1021/acsaem.9b02386"
+    Call info(appex, 5)
+
+    Write (appex(1), fmt1)  "#" 
+    Write (appex(2), fmt1)  "#  2) ALC_EQCM: Automated stoichiometric resolution in electrochemistry through Density Functional"
+    Write (appex(3), fmt1)  "#     Theory aided, Electrochemical Quartz Crystal Microbalance."
+    Write (appex(4), fmt1)  "#     I. Scivetti and G. Teobaldi."
+    Write (appex(5), fmt1)  "#     Computational Materials Science 218, 111968, (2023),&
+                                   & https://doi.org/10.1016/j.commatsci.2022.111968"
+    Call info(appex, 5)
+
+    Write (appex(1), fmt1)  "#" 
+    Write (appex(2), fmt1)  '#  Both references are provided in bibtex format within the "biblio-references"&
+                            & folder in the root directory.'
+    Call info(appex, 2)
 
     Close(files(FILE_OUT_EQCM)%unit_no)    
 

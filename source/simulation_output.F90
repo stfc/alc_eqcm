@@ -1776,6 +1776,16 @@ Contains
        Call info(messages, 1)
     End If        
 
+    ! GAPW or GPW?
+    If (Trim(simulation_data%code_format)=='cp2k') Then
+      If (simulation_data%dft%gapw%stat) Then
+         Write (messages(1),'(1x,a)')  '- Gaussian Augmented Plane Wave (GAPW) method'
+      Else 
+         Write (messages(1),'(1x,a)')  '- Gaussian Plane Wave (GPW) method'
+      End If        
+      Call info(messages, 1)
+    End If        
+
     ! Spin polarization 
     If (simulation_data%dft%spin_polarised%fread) Then
        Write (messages(1),'(1x,a)')         '- spin-polarised calculation'

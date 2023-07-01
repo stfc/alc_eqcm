@@ -1,0 +1,38 @@
+# Input directives for buiding a melted model of NaCl 
+
+Analysis        Model_disordered_system         
+
+#Stoichiometric species
+&Block_Species
+  number_species      3                        # Number of species
+# Name   Weight       Oxidation   s0   Type of variable
+  Na1    22.989       1.0         1.0    fixed     
+  Na2    22.989       1.0        107.0  dependent     
+  Cl     35.0        -1.0        108.0  dependent
+&End_Block_Species
+
+
+# Directive for building atomistic models
+#########################################
+&Block_Species_Components
+  #Na1
+  Na1 1  solute 
+  Na1 Na 1
+  #Na2
+  Na2 1  atom 
+  Na2  Na 1
+  #Cl
+  Cl  1  atom 
+  Cl Cl 1
+&End_Block_Species_COMPONENTS
+
+&Block_input_composition
+ tags    Na1 Cl Na2
+ amounts 1    0  0
+&End_block_input_composition
+
+input_model_format   vasp
+output_model_format  vasp 
+
+distance_cutoff 2.85 Angstrom
+scale_cell      1.25

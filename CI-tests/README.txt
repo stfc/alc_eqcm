@@ -32,9 +32,9 @@ test 14: Electrodeposition of Sb on Pt
 test 15: Intercalation/De-intercalation of K+ ions into/from a (NiOH)2 host  (Stoichiometry analysis: only K+ and H+ participate in the reaction as dependent variables)
 test 16: Stoichiometric analysis with constraints: Intercalation/De-intercalation of Li+ ions into/from a (NiOH)2 host. Test for target_value 
 test 17: Stoichiometric analysis with constraints: Intercalation/De-intercalation of Li+ ions into/from a (NiOH)2 host. Test for target_value and keep_ratio
-test 18: Stoichiometric analysis with constraints: Intercalation/De-intercalation of K ions into/from a (NiOH)2 host. Test for target_min and keep_ratio
-test 19: Stoichiometric analysis with constraints: Intercalation/De-intercalation of K ions into/from a (NiOH)2 host. Test for target_max and keep_ratio
-test 20: Stoichiometric analysis with constraints: Intercalation/De-intercalation of K ions into/from a (NiOH)2 host. Test for target_range
+test 18: Stoichiometric analysis with constraints: Intercalation/De-intercalation of K+ ions into/from a (NiOH)2 host. Test for target_min and keep_ratio
+test 19: Stoichiometric analysis with constraints: Intercalation/De-intercalation of K+ ions into/from a (NiOH)2 host. Test for target_max and keep_ratio
+test 20: Stoichiometric analysis with constraints: Intercalation/De-intercalation of K+ ions into/from a (NiOH)2 host. Test for target_range
 test 21: Stoichiometric analysis with constraints: Intercalation/De-intercalation of K+ and Na+ ions into/from a (NiOH)2 host. Test for target_min and ratio_fixed
 test 22: Stoichiometric analysis with constraints: Intercalation/De-intercalation of K+ and Na+ ions into/from a (NiOH)2 host. Test for target_min and ratio_fixed (settings differ from test 21)
 test 23: Stoichiometric analysis with constraints: Intercalation/De-intercalation of K+, Na+ and Li+ ions into/from a (NiOH)2 host. Test for target_min, ratio_fixed, Target_value and keep_ratio
@@ -57,7 +57,7 @@ test 31: Intercalation (bulk- nickel oxy-hydroxide) - Building an atomistic mode
 test 32: Intercalation (bulk- nickel oxy-hydroxide) - Building an atomistic model of the pristine structure with target stoichiometry [(NiO2)H_0.20 (H2O)_0.33 K_0.354] 
 test 33: Intercalation (bulk- nickel oxy-hydroxide) - Building an atomistic model of a cycled sample with stoichiometric solutions computed via constraints. Li+, H2O and H+ participate in the reaction. Add mass to DATA_EQCM  
 test 34: Intercalation (bulk- nickel oxy-hydroxide) - Building an atomistic model of a cycled sample with stoichiometric solutions computed via constraints. K+, H2O and H+ participate in the reaction. Format for the generated models: cp2k
-test 35: Intercalation (bulk- nickel oxy-hydroxide) - Building an atomistic model of a cycled sample with stoichiometric solutions only for the first oxidation. 7 models are generated. Li+, H2O and H+ participate in the reaction. 7 models are generated.
+test 35: Intercalation (bulk- nickel oxy-hydroxide) - Building an atomistic model of a cycled sample with stoichiometric solutions only for the first oxidation. Li+, H2O and H+ participate in the reaction. 7 models are generated.
 test 36: Intercalation (bulk- nickel oxy-hydroxide) - Building an atomistic model of a cycled sample with stoichiometric solutions only for the first oxidation. Na+, Li+, H2O and H+ participate in the (fictitious) reaction. 17 models are generated.
 test 37: Intercalation (bulk- nickel oxy-hydroxide) - Building an atomistic model of a cycled sample with stoichiometric solutions only for the first cycle. Na+, K+, H2O and H+ participate in the (fictitious) reaction. Only a single solution for oxidation. 17 models are generated for the subsequent reduction.
 test 38: Electrodeposition of Sb on Pt - Building an atomistic model of the pristine structure with target stoichiometry as set in the &Block_Species.
@@ -106,3 +106,9 @@ test 70: Test 64 with NaCl electrolyte. Soft-sphere radii
 
 ## EQCM characterization, stoichiometry and modelling for a given voltage range
 test 71: Intercalation/De-intercalation of Li+ ions into/from a (NiOH)2 host 
+
+##########################################
+# Computation of mole fluxes and ionic currents
+##########################################
+test 72: Example adapted to test 9
+test 73: Example adapted to test 18
