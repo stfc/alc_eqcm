@@ -2,17 +2,17 @@
 ! Welcome to ALC_EQCM
 !
 ! This program performs post-processing of EQCM data to the 
-! purpose of electrochemical characterization and building
+! purpose of electrochemical characterization. Based on the derived
+! stoichiometry, the implemented capabilities allow building
 ! of atomistic models compatible with experiments. This code
-! also generates input files for atomistic simulations and 
-! scripts for computation in High Performance Computing 
-! facilities.
+! can also generates input files for atomistic simulations of the 
+! generated modeles together with scripts for computation 
+! in High Performance Computing facilities.
 !
-! Copyright - 2022 Ada Lovelace Centre (ALC)
+! Copyright:  2022-2024 Ada Lovelace Centre (ALC)
 !             Scientific Computing Department (SCD)
-!             The Science and Technology Facilities Council (STFC)  
+!             The Science and Technology Facilities Council (STFC, UKRI)  
 !               
-!
 ! Author:     Ivan Scivetti (i.scivetti)
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 Program alc_eqcm 

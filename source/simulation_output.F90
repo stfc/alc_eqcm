@@ -2,7 +2,7 @@
 ! Module that automatically sets up input files for geometry relaxation 
 ! and molecular dynamics of the generated atomistic models 
 !
-! Copyright - 2022 Ada Lovelace Centre (ALC)
+! Copyright: 2022-2024 Ada Lovelace Centre (ALC)
 !             Scientific Computing Department (SCD)
 !             The Science and Technology Facilities Council (STFC)
 !

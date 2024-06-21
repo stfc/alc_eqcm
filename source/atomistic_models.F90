@@ -13,7 +13,7 @@
 ! input files for simulations and/or HPC scripts if the user decides any 
 ! parameter must be adjusted without the need to re-generate atomistic models    
 !
-! Copyright - 2022 Ada Lovelace Centre (ALC)
+! Copyright: 2022-2024 Ada Lovelace Centre (ALC)
 !             Scientific Computing Department (SCD)
 !             The Science and Technology Facilities Council (STFC)
 !

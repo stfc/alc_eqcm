@@ -9,9 +9,11 @@ The user must have access to the following software:
 * Cmake (3.1)  
 * Make (3.82)  
 * git (2.7.4)  
+
 The following two softwares are only needed when working with atomic structures in *.cif* format:
- * Python (3.8.10)
- * Atomistic Simulation Environment-ASE (ase-3.23.0b1)
+
+* Python (3.8.10)
+* Atomistic Simulation Environment-ASE (ase-3.23.0b1)
 
 Information in parenthesis indicates the minimum version tested during the development of the code. The specification for the minimum versions is not fully rigorous but indicative, as there could be combinations of other minimum versions that still work. Our tests indicate that versions of Intel compiler older than 16.0.1 exhibit problems and should be avoided.
  
@@ -39,26 +41,6 @@ If compilation is successful, executable *alc_eqcm.x* will have been generated i
 
 There are two available options for *-DCMAKE_BUILD_TYPE*, namely: *Debug* and *Release*. For code development purposes, we strongly recommend to compile the code with the *Debug* option, independently of the compiler. For the purposes of running the  code only, the user is advised to use the option *Release*. The pre-defined flags options for compilation are define in file *cmake/flags.cmake* and depend on the compiler, as we detailed in the following. 
 
-#### GNU-Fortran compiler
-If the compiler is GNU-Fortran, the pre-defined compilation flags for the *Release* options are:
-```sh
-"-Ofast -ftree-vectorize -funroll-loops -ffast-math"
-```
-In contrast, if the selected option is *Debug*, the predefined compilation flags are: 
-```sh
-"-g -Wextra -Wuse-without-only -frecord-gcc-switches -O0 -std=f2008 -pedantic -fbacktrace -fcheck=all -finit-integer=2147483647  
--finit-real=snan -finit-logical=true -finit-character=42 -ffpe-trap=invalid,zero,overflow -fdump-core -fstack-protector-all -Wall -pipe"
-```
-for *gFortran* versions older than 6.5. If the compiler version is 7.0 or newer, the flag *-finit-derived* is also added to the list above to allow default initialization of derived-type variables.  
-
-#### Intel-Fortran compiler
-
-For *Intel-Fortran* compiler (ifort), the pre-defined flags for option *Debug* are:
-```sh
-"-g -O0 -stand f08 -traceback -C -fp-stack-check -ftrapuv -init=snan -init=arrays"
-```
-whereas for the *Release* option, we have defined only the flag *-Ofast*. 
-
 ### Building the code automatically
 Inside folder **tools**, the user will find the following shell files (sh-files) that automatically build and compile the code:
 
@@ -82,6 +64,31 @@ To execute this script, the user must proceed as follows:
 username@wherever:/home/username/codes/alc_eqcm$ sh tools/gnu-build-debug.sh
 ```
 which builds and compiles the code within folder ***build-gnu-debug***.
+
+### Compilation flags
+Based on the refactoring work for the DL_POLY code, we have defined compilation flags, which depend on the Fortran compiler (*GNU-Fortran* and *Intel-Frotran*) and the option (*Release* or *Debug*). Specifications are set in the *flags.cmake* file within the ***cmake*** folder.
+
+#### GNU-Fortran compiler
+If the compiler is GNU-Fortran, the pre-defined compilation flags for the *Release* options are:
+```sh
+"-Ofast -ftree-vectorize -funroll-loops -ffast-math"
+```
+In contrast, if the selected option is *Debug*, the predefined compilation flags are: 
+```sh
+"-g -Wextra -Wuse-without-only -frecord-gcc-switches -O0 -std=f2008 -pedantic -fbacktrace -fcheck=all -finit-integer=2147483647  
+-finit-real=snan -finit-logical=true -finit-character=42 -ffpe-trap=invalid,zero,overflow -fdump-core -fstack-protector-all -Wall -pipe"
+```
+for *gFortran* versions older than 6.5. If the compiler version is 7.0 or newer, the flag *-finit-derived* is also added to the list above to allow default initialization of derived-type variables.  
+
+#### Intel-Fortran compiler
+
+For *Intel-Fortran* compiler (ifort), the pre-defined flags for option *Debug* are:
+```sh
+"-g -O0 -stand f08 -traceback -C -fp-stack-check -ftrapuv -init=snan -init=arrays"
+```
+whereas for the *Release* option, we have defined only the flag *-Ofast*. 
+
+
 
 ## Testing the code
 ### Building manually including the testing infrastructure

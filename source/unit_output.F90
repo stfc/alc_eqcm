@@ -4,7 +4,7 @@
 ! - print array of messages to OUT_EQCM   
 ! - abort the code by 1) priting an error message and 2) closing files
 !
-! Copyright - 2022 Ada Lovelace Centre (ALC)
+! Copyright: 2022-2024 Ada Lovelace Centre (ALC)
 !             Scientific Computing Department (SCD)
 !             The Science and Technology Facilities Council (STFC)
 !

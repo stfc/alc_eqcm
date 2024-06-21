@@ -3,7 +3,7 @@
 ! with VASP. This module also warns the user about aspects to take
 ! into consideration when performing simulations
 !
-! Copyright - 2022 Ada Lovelace Centre (ALC)
+! Copyright: 2022-2024 Ada Lovelace Centre (ALC)
 !             Scientific Computing Department (SCD)
 !             The Science and Technology Facilities Council (STFC)
 !
@@ -177,17 +177,17 @@ Contains
 
     ! Check XC_version
     If (Trim(simulation_data%dft%xc_version%type) /= 'ca'     .And.&
-      Trim(simulation_data%dft%xc_version%type)  /= 'hl'     .And.&
-      Trim(simulation_data%dft%xc_version%type)  /= 'pz'     .And.&
-      Trim(simulation_data%dft%xc_version%type)  /= 'wigner' .And.&
-      Trim(simulation_data%dft%xc_version%type)  /= 'vwn'    .And.&
-      Trim(simulation_data%dft%xc_version%type)  /= 'am05'   .And.&
-      Trim(simulation_data%dft%xc_version%type)  /= 'pw91'   .And.&
-      Trim(simulation_data%dft%xc_version%type)  /= 'pbe'    .And.&
-      Trim(simulation_data%dft%xc_version%type)  /= 'rp'     .And.&
-      Trim(simulation_data%dft%xc_version%type)  /= 'revpbe' .And.&
-      Trim(simulation_data%dft%xc_version%type)  /= 'pbesol' .And.&
-      Trim(simulation_data%dft%xc_version%type)  /= 'blyp' ) Then
+      Trim(simulation_data%dft%xc_version%type)   /= 'hl'     .And.&
+      Trim(simulation_data%dft%xc_version%type)   /= 'pz'     .And.&
+      Trim(simulation_data%dft%xc_version%type)   /= 'wigner' .And.&
+      Trim(simulation_data%dft%xc_version%type)   /= 'vwn'    .And.&
+      Trim(simulation_data%dft%xc_version%type)   /= 'am05'   .And.&
+      Trim(simulation_data%dft%xc_version%type)   /= 'pw91'   .And.&
+      Trim(simulation_data%dft%xc_version%type)   /= 'pbe'    .And.&
+      Trim(simulation_data%dft%xc_version%type)   /= 'rp'     .And.&
+      Trim(simulation_data%dft%xc_version%type)   /= 'revpbe' .And.&
+      Trim(simulation_data%dft%xc_version%type)   /= 'pbesol' .And.&
+      Trim(simulation_data%dft%xc_version%type)   /= 'blyp' ) Then
       Write (messages(1),'(2(1x,a))') Trim(error_dft), &
                                   &'Invalid specification for directive "XC_version" for VASP.&
                                   & Implemented options for VASP are:'
@@ -1472,6 +1472,8 @@ Contains
      Write (iunit,'(a)') '#### Molecular dynamics'
      Write (message, '(a)')       'IBRION = 0'
      Call record_directive(iunit, message, 'IBRION', simulation_data%set_directives%array(ic), ic)
+     Write (message, '(a)')       'ISYM = 0'
+     Call record_directive(iunit, message, 'ISYM', simulation_data%set_directives%array(ic), ic)
      Write (message,'(a,f6.2,a)') 'POTIM = '  , simulation_data%motion%timestep%value,    ' # Time step in fs'
      Call record_directive(iunit, message, 'POTIM', simulation_data%set_directives%array(ic), ic)
      Write (message,'(a,f6.2,a)') 'TEBEG = '  , simulation_data%motion%temperature%value, ' # Temperature in Kelvin'
