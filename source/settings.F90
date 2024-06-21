@@ -7,7 +7,7 @@
 ! - checks input directives to build atomistic models 
 ! - checks input directives to build scripts for HPC execution 
 !
-! Copyright - 2022 Ada Lovelace Centre (ALC)
+! Copyright: 2022-2024 Ada Lovelace Centre (ALC)
 !             Scientific Computing Department (SCD)
 !             The Science and Technology Facilities Council (STFC)
 !

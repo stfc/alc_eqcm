@@ -1,9 +1,9 @@
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! 
 ! Module for input/output files and related subroutines
 !
-! Copyright - 2022 Ada Lovelace Centre (ALC)
-!             Scientific Computing Department (SCD)
-!             The Science and Technology Facilities Council (STFC)
+! Copyright: 2022-2024 Ada Lovelace Centre (ALC)
+!            Scientific Computing Department (SCD)
+!            The Science and Technology Facilities Council (STFC)
 !
 ! Author -    i.scivetti  April 2020
 !!!!!!!!!!!!!!!!!!!!11!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -227,7 +227,7 @@ Contains
     Write (header(5), fmt3)  "#  version:  ", Trim(code_VERSION), Repeat(' ',57),                     "#"
     Write (header(6), fmt3)  "#  release:  ", Trim(date_RELEASE), Repeat(' ',51),                     "#"
     Write (header(7), fmt1)  "#                                                                        #"
-    Write (header(8), fmt1)  "#  Copyright:  2022  Ada Lovelace Centre (ALC)                           #"
+    Write (header(8), fmt1)  "#  Copyright:  2022-2024  Ada Lovelace Centre (ALC)                      #"
     Write (header(9), fmt1)  "#              Scientific Computing Department (SCD)                     #"
     Write (header(10), fmt1) "#              Science and Technology Facilities Councils (STFC)         #"
     Write (header(11), fmt1) "#                                                                        #"
