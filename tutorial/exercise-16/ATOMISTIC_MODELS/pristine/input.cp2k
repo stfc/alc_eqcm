@@ -6,7 +6,7 @@
 &GLOBAL
   PROJECT   model
   RUN_TYPE   MD
-  PRINT_LEVEL  MEDIUM
+  PRINT_LEVEL  LOW
   WALLTIME     300000
 &END GLOBAL
  
@@ -19,10 +19,10 @@
   ######################
   &DFT
     UKS  .True.  # Spin-polarised calculation
-    PLUS_U_METHOD   MULLIKEN    # DFT+U method with Mulliken charges
  
-    #==== Potential and Basis
+    #==== Basis set filename
     BASIS_SET_FILE_NAME  BASIS_SET
+    #==== Pseudopotential filename
     POTENTIAL_FILE_NAME  GTH_POTENTIALS
  
     #==== Self-consistency
@@ -38,7 +38,7 @@
         # 1) Revised Becke 86 with modified gradient correction (for exchange)
         &GGA_X_B86_R
         &END GGA_X_B86_R
-        # 2) Perdew-Wang 92 (PW92), only the correlation part [J. P. Perdew and Y. Wang. Phys. Rev. B, 45:13244–13249, Jun 1992]
+        # 2) Perdew-Wang 92 (PW92), only the correlation part [J. P. Perdew and Y. Wang. Phys. Rev. B, 45:13244-13249, Jun 1992]
         &PW92
         &END PW92
       &END XC_FUNCTIONAL
@@ -50,14 +50,14 @@
           CUTOFF 50
         &END NON_LOCAL
       &END VDW_POTENTIAL
+      #Tricks to speed up the computation of the XC potential (only if you know what you are doing)
+      #&XC_GRID
+      #&END XC_GRID
     &END XC
-    #Tricks to speed up the computation of the XC potential (only if you know what you are doing)
-    #&XC_GRID
-    #&END XC_GRID
      
     #==== Settings for the SCF process
     &SCF
-      SCF_GUESS   ATOMIC
+      SCF_GUESS   RESTART
       EPS_SCF   0.367E-06
       MAX_SCF   100
       #== Diagonalisation
@@ -72,8 +72,7 @@
       &END SMEAR
       #== Mixing
       &MIXING
-        METHOD BROYDEN_MIXING
-        ALPHA 0.15
+        METHOD DIRECT_P_MIXING
       &END MIXING
     &END SCF
      
@@ -117,47 +116,36 @@
       ELEMENT Li
       BASIS_SET DZVP-MOLOPT-SR-GTH
       POTENTIAL GTH-PBE
-      MAGNETIZATION    0.000
     &END KIND
     &KIND  Mn
       ELEMENT Mn
       BASIS_SET TZVP-MOLOPT-SR-GTH
       POTENTIAL GTH-PBE
-      MAGNETIZATION    4.000
-      &DFT_PLUS_U
-        L  1
-        U_minus_J    0.184 # (in Hartree)
-      &END DFT_PLUS_U
     &END KIND
     &KIND  O
       ELEMENT O
       BASIS_SET DZVP-MOLOPT-SR-GTH
       POTENTIAL GTH-PBE
-      MAGNETIZATION    0.000
     &END KIND
     &KIND  Al1
       ELEMENT Al
       BASIS_SET TZVP-MOLOPT-SR-GTH
       POTENTIAL GTH-PBE
-      MAGNETIZATION    0.000
     &END KIND
     &KIND  O1
       ELEMENT O
       BASIS_SET DZVP-MOLOPT-SR-GTH
       POTENTIAL GTH-PBE
-      MAGNETIZATION    0.000
     &END KIND
     &KIND  Al2
       ELEMENT Al
       BASIS_SET TZVP-MOLOPT-SR-GTH
       POTENTIAL GTH-PBE
-      MAGNETIZATION    0.000
     &END KIND
     &KIND  O2
       ELEMENT O
       BASIS_SET DZVP-MOLOPT-SR-GTH
       POTENTIAL GTH-PBE
-      MAGNETIZATION    0.000
     &END KIND
  
   &END SUBSYS
