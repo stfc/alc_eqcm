@@ -1,6 +1,0 @@
-   model_pristine_sample   cp2k
- ATOMISTIC_MODELS/pristine
-           7
-        Li        Mn         O       Al1        O1       Al2        O2
-        Li        Mn        O         Al        O         Al        O 
-        88       192       384        24        24        24        48
