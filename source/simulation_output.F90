@@ -194,7 +194,7 @@ Contains
           Write (messages(1), '(1x,3a)') '***ERROR: folder ', Trim(FOLDER_DFT), ' cannot be found.'
           Write (messages(2), '(1x,a)') 'This folder must contain folder PPs (for pseudo potentials)&
                                        & and BASIS_SET file (for the CP2K code)'
-          Write (messages(3), '(1x,a)') 'The requested analysis cannot be conducted. Pleased create the folder&
+          Write (messages(3), '(1x,a)') 'The requested analysis cannot be conducted. Please create the folder&
                                        & and add the required information.'
           Call info(messages, 3)
           Call error_stop(' ')
