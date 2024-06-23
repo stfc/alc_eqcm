@@ -1498,10 +1498,11 @@ Contains
     End If
 
     ! Check status of current offset 
-    If (eqcm_data%analysis%type /= 'print_eqcm_raw'          .And. &
+    If (eqcm_data%analysis%type /= 'print_eqcm_raw'          .And.  &
         eqcm_data%analysis%type /= 'print_eqcm_filter'       .And.  &
         eqcm_data%analysis%type /= 'model_pristine_sample'   .And.  &
         eqcm_data%analysis%type /= 'model_disordered_system' .And.  &
+        eqcm_data%analysis%type /= 'hpc_simulation_files'    .And.  & 
         eqcm_data%analysis%type /= 'spectra') Then
       If (eqcm_data%current_offset%fread) Then
         If (eqcm_data%current_offset%stat) Then
@@ -1520,7 +1521,7 @@ Contains
         Call info(' ', 1)
         Write (messages(1),'(2(1x,a))')  Trim(error_set_eqcm), 'The selected option for the "analysis" directive needs the'
         Write (messages(2),'(1x,a)')    'definition of the "current_offset" directive, which must be set to .True. or .False.'
-        Write (messages(3),'(1x,a)')    'depending on the CV profile and the problem under consideration. Please amend and rerun.'
+        Write (messages(3),'(1x,a)')    'depending on the CV profile and the problem under consideration. Please firx and rerun.'
         Call info(messages, 3)
         Call error_stop(' ')
       End If 
