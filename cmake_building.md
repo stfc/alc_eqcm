@@ -27,7 +27,7 @@ username@wherever:/home/username/codes/alc_eqcm$ mkdir build-gnu-debug
 username@wherever:/home/username/codes/alc_eqcm$ cd build-gnu-debug
 username@wherever:/home/username/codes/alc_eqcm/build-gnu-debug$ FC=gfortran cmake ../ -DCMAKE_BUILD_TYPE=Debug
 ```
-For the successful execution of the last step, the user must ensure to have access to the minimum version of the required softwares, as per specification above. In case the user opts to utilise the Inter compiler, *FC=ifort* must be set instead. If successful, the user will identify the following filing structure:  
+For the successful execution of the last step, the user must ensure to have access to the minimum version of the required softwares, as per specification above. In case the user opts to utilise the Inter compiler, *FC=ifx* must be set instead. If successful, the user will identify the following filing structure:  
 
 ***bin*** &nbsp; CMakeCache.txt &nbsp; ***CMakeFiles &nbsp;*** cmake_install.cmake &nbsp; Makefile &nbsp; ***modules***  
 
@@ -82,7 +82,7 @@ for *gFortran* versions older than 6.5. If the compiler version is 7.0 or newer,
 
 #### Intel-Fortran compiler
 
-For *Intel-Fortran* compiler (ifort), the pre-defined flags for option *Debug* are:
+For *Intel-Fortran* compiler (ifx), the pre-defined flags for option *Debug* are:
 ```sh
 "-g -O0 -stand f08 -traceback -C -fp-stack-check -ftrapuv -init=snan -init=arrays"
 ```
