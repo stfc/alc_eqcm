@@ -33,14 +33,11 @@ ALC_EQCM contains the following set of files and folders (in italic-bold):
 * [***tools***](./tools): includes all shell files for building, compiling and testing the code automatically.
 * [***tutorial***](./tutorials): contains the input files for the tutorial examples, which are explained in the section 6 of the manual
 * [.gitignore](./.gitignore): instructs Git which file to ignore for development and integration.
-* [.gitlab-ci.yml](.gitlab-ci.yml): instructions to perform building and testing for CI.
 * [CI_instructions.md](./CI_instructions.md): provides instructions for CI.
 * [CMakeList.txt](./CMakeList.txt): sets the framework for code building and testing with CMake.
 * LICENSE: specification of the BSD 3-Clause License under which ALC_EQCM is registered.
 * README.md: this file.
 * [cmake_building.md](./cmake_building.md): details the steps to build, compile and run tests using the CMake platform.
-* [coding_protocol.md](./coding_protocol.md): details instructions of the adopted protocol for code development with Fortran.
-* [gitlab-ci.yml](gitlab-ci.yml): symlink to .gitlab-ci.yml
 
 ## Contributors
  * Ivan Scivetti (original author)
