@@ -1,3 +1,4 @@
+#Directives for buling the code automatically
 if (NOT FLAGS_SET)
   if(${CMAKE_Fortran_COMPILER_ID} STREQUAL "GNU")
 
@@ -14,13 +15,12 @@ if (NOT FLAGS_SET)
 
   elseif(${CMAKE_Fortran_COMPILER_ID} STREQUAL "Intel")
 
-    if (${CMAKE_Fortran_COMPILER_VERSION} VERSION_LESS "16.0.1")
-      message(FATAL_ERROR "***ERROR: Available Intel compiler version was not tested against Fortran2008 standards. Recommended minimum version: 16.0.1. The user could try building the code manually... at its own risk!")
-    endif()
+   if (${CMAKE_Fortran_COMPILER_VERSION} VERSION_LESS "16.0.1")
+     message(FATAL_ERROR "***ERROR: Available Intel compiler version was not tested against Fortran2008 standards. Recommended minimum version: 16.0.1. The user could try building the code manually... at its own risk!")
+   endif()
 
-
-    set(CMAKE_Fortran_FLAGS_DEBUG "-g -O0 -stand f08 -traceback -C -fp-stack-check -ftrapuv -init=snan -init=arrays" CACHE STRING "Flags used by the Intel-Fortran compiler for the DEBUG option." FORCE)
-    set(CMAKE_Fortran_FLAGS_RELEASE "-Ofast" CACHE STRING "Flags used by the Intel-Fortran compiler for the RELEASE option." FORCE)
+   set(CMAKE_Fortran_FLAGS_DEBUG "-g -O0 -stand f08 -traceback -C -check all,nouninit -ftrapuv -init=snan -init=arrays" CACHE STRING "Flags used by the Intel-Fortran compiler for the DEBUG option." FORCE)
+   set(CMAKE_Fortran_FLAGS_RELEASE "-O3 -C -check nouninit" CACHE STRING "Flags used by the Intel-Fortran compiler for the RELEASE option." FORCE)
 
   endif()
   set(FLAGS_SET 1 CACHE INTERNAL "Flags have been defined")

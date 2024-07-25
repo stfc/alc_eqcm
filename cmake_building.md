@@ -5,7 +5,7 @@ The following notes describe the steps to build **ALC_EQCM** using the [**CMake*
 ## Software required
 The user must have access to the following software:  
 
-* GNU-Fortran (5.4.0) or Intel-Fortran (16.0.1)
+* GNU-Fortran (5.4.0) or Intel-Fortran (ifort 16.0.1; ifx 2024.0.0)
 * Cmake (3.1)  
 * Make (3.82)  
 * git (2.7.4)  
@@ -15,7 +15,9 @@ The following two softwares are only needed when working with atomic structures 
 * Python (3.8.10)
 * Atomistic Simulation Environment-ASE (ase-3.23.0b1)
 
-Information in parenthesis indicates the minimum version tested during the development of the code. The specification for the minimum versions is not fully rigorous but indicative, as there could be combinations of other minimum versions that still work. Our tests indicate that versions of Intel compiler older than 16.0.1 exhibit problems and should be avoided.
+Information in parenthesis indicates the minimum version tested during the development of the code. The specification for the minimum versions is not fully rigorous but indicative, as there could be combinations of other minimum versions that still work. Our tests indicate that versions of Intel compiler older than 16.0.1 exhibit problems and should be avoided.  
+
+IMPORTANT: we have identified serious problems with version 2021.10.0 of ifort, related to Intel bugs when using the INQUIRE function. These problems are not observed for versions 2021.7.0 (and older). Intel seem to have been fixed this bug for version 2021.11.0.
  
 ## Building the code
 In the following, we assume the code has been downloaded to folder ***alc_eqcm*** at the location */home/username/codes*, in the remote machine *wherever* of the account *"username"*. Please refer to file [README.md](./README.md) for instructions to download the code.
@@ -27,7 +29,7 @@ username@wherever:/home/username/codes/alc_eqcm$ mkdir build-gnu-debug
 username@wherever:/home/username/codes/alc_eqcm$ cd build-gnu-debug
 username@wherever:/home/username/codes/alc_eqcm/build-gnu-debug$ FC=gfortran cmake ../ -DCMAKE_BUILD_TYPE=Debug
 ```
-For the successful execution of the last step, the user must ensure to have access to the minimum version of the required softwares, as per specification above. In case the user opts to utilise the Inter compiler, *FC=ifx* must be set instead. If successful, the user will identify the following filing structure:  
+For the successful execution of the last step, the user must ensure to have access to the minimum version of the required softwares, as per specification above. In case the user opts to utilise the Inter compiler, *FC=ifort* (or *FC=ifx*) must be set instead. If successful, the user will identify the following filing structure:  
 
 ***bin*** &nbsp; CMakeCache.txt &nbsp; ***CMakeFiles &nbsp;*** cmake_install.cmake &nbsp; Makefile &nbsp; ***modules***  
 
@@ -44,10 +46,12 @@ There are two available options for *-DCMAKE_BUILD_TYPE*, namely: *Debug* and *R
 ### Building the code automatically
 Inside folder **tools**, the user will find the following shell files (sh-files) that automatically build and compile the code:
 
-* gnu-build-debug.sh: *Debug* option with *gFortran*. Generated folder is ***build-gnu-debug***.
+* gnu-build-debug.sh: *Debug* option with *gfortran*. Generated folder is ***build-gnu-debug***.
 * gnu-build.sh: &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; *Release* option with *gFortran*. Generated folder is ***build-gnu***.
-* intel-build-debug.sh: *Debug* option with *Intel-Fortran*. Generated folder is ***build-intel-debug***.
-* intel-build.sh:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; *Release* option with *Intel-Fortran*. Generated folder is ***build-intel***.
+* ifort-build-debug.sh: *Debug* option with *ifort*. Generated folder is ***build-ifort-debug***.
+* ifort-build.sh:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; *Release* option with *ifort*. Generated folder is ***build-ifort***.
+* ifx-build-debug.sh: *Debug* option with *ifx*. Generated folder is ***build-ifx-debug***.
+* ifx-build.sh:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; *Release* option with *ifx*. Generated folder is ***build-ifx***.
 
 As an example, we will consider the sh-file *"gnu-build-debug.sh"* with the following content:
 ```sh
@@ -78,17 +82,18 @@ In contrast, if the selected option is *Debug*, the predefined compilation flags
 "-g -Wextra -Wuse-without-only -frecord-gcc-switches -O0 -std=f2008 -pedantic -fbacktrace -fcheck=all -finit-integer=2147483647  
 -finit-real=snan -finit-logical=true -finit-character=42 -ffpe-trap=invalid,zero,overflow -fdump-core -fstack-protector-all -Wall -pipe"
 ```
-for *gFortran* versions older than 6.5. If the compiler version is 7.0 or newer, the flag *-finit-derived* is also added to the list above to allow default initialization of derived-type variables.  
+for *gFortran* versions older than 6.5. If the compiler version is 7.0 or newer, the flags *-finit-derived* and *-frecursive* are also added to the list above.  
 
 #### Intel-Fortran compiler
 
-For *Intel-Fortran* compiler (ifx), the pre-defined flags for option *Debug* are:
+For *Intel-Fortran* compiler (ifort or ifx), the pre-defined flags for option *Debug* are:
 ```sh
-"-g -O0 -stand f08 -traceback -C -fp-stack-check -ftrapuv -init=snan -init=arrays"
+"-g -O0 -stand f08 -traceback -C -check all,nouninit -ftrapuv -init=snan -init=arrays"
 ```
-whereas for the *Release* option, we have defined only the flag *-Ofast*. 
-
-
+whereas for the *Release* option, we have defined:
+```sh
+"-O3 -C -check nouninit"
+```
 
 ## Testing the code
 ### Building manually including the testing infrastructure
@@ -193,8 +198,10 @@ Inside folder ***tools***, the user will find the following sh-files that automa
 
 * gnu-test-debug.sh: Building and compilation with the *Debug* option using *gFortran*. Tests run with ctest. Generated folder is ***test-gnu-debug***.
 * gnu-test.sh: &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Building and compilation with the *Release* option using *gFortran*. Tests run with ctest. Generated folder is ***test-gnu***.
-* intel-test-debug.sh: Building and compilation with the *Debug* option using *Intel-Fortran*. Tests run with ctest. Generated folder is ***test-intel-debug***.
-* intel-test.sh:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Building and compilation with the *Release* option using *Intel-Fortran*. Tests run with ctest. Generated folder is ***test-intel***.
+* ifort-test-debug.sh: Building and compilation with the *Debug* option using *ifort*. Tests run with ctest. Generated folder is ***test-ifort-debug***.
+* ifort-test.sh:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Building and compilation with the *Release* option using *ifort*. Tests run with ctest. Generated folder is ***test-ifort***.
+* ifx-test-debug.sh: Building and compilation with the *Debug* option using *ifx*. Tests run with ctest. Generated folder is ***test-ifx-debug***.
+* ifx-test.sh:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Building and compilation with the *Release* option using *ifx*. Tests run with ctest. Generated folder is ***test-ifx***.
 
 For all these sh-files, the option *"--output-on-failure"* is included for ctest, as explained before. As an example, we will consider the sh-file *gnu-test-debug.sh*, which has the following content:
 ```sh
