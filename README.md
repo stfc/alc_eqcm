@@ -47,7 +47,7 @@ ALC_EQCM contains the following set of files and folders (in italic-bold):
 ### Depedencies
 The user must have access to the following software:  
 
-* GNU-Fortran (5.4.0) or Intel-Fortran (16.0.1)
+* GNU-Fortran (5.4.0) or Intel-Fortran (ifort 16.0.1; ifx 2024.0.0)
 * Cmake (3.1)  
 * Make (3.82)  
 * git (2.7.4)  
@@ -55,7 +55,10 @@ The following two softwares are only needed when working with atomic structures 
 * Python (3.8.10)
 * Atomistic Simulation Environment-ASE (ase-3.23.0b1)
 
-Information in parenthesis indicates the minimum version tested during the development of the code. The specification for the minimum versions is not fully rigorous but indicative, as there could be combinations of other minimum versions that still work. Our tests indicate that versions of Intel compiler older than 16.0.1 exhibit problems and should be avoided.
+Information in parenthesis indicates the minimum version tested during the development of the code. The specification for the minimum versions is not fully rigorous but indicative, as there could be combinations of other minimum versions that still work. Our tests indicate that versions of Intel compiler older than 16.0.1 exhibit problems and should be avoided.  
+
+IMPORTANT: we have identified serious problems with version 2021.10.0 of ifort, related to Intel bugs when using the INQUIRE function. These problems are not observed for versions 2021.7.0 (and older). Intel seem to have been fixed this
+ bug for version 2021.11.0.
 
 ## Getting started
 The user with account *"username"* can clone the code locally (in machine *"wherever"*) by executing the following command with the SSH protocol
