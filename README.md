@@ -22,17 +22,15 @@ Please cite the following work in publications making use of ALC_EQCM:
 Both references are provided in bibtex format within the [***biblio-references***](./biblio-references) folder in the root directory.
 
 ## Structure of files and folders
-ALC_EQCM contains the following set of files and folders (in italic-bold):
+ALC_EQCM contains the following relevant set of files and folders (in italic-bold):
 
 * [***CI-tests***](./CI-tests): contains all the tests in .tar format for testing purposes. There is also a file called *README.txt* with a brief description for each test.
-* [***biblio-references***](./biblio-references): includes the bibliographic references of the ALC_EQCM code in BibTex format. 
 * [***cmake***](./cmake): contains the specification for the compilation flags depending on the Fortran compiler, including options for debugging.
 * [***manual***](./manual): folder with the user's manual.
 * [***scripts***](./scripts): contains scripts for data processing and transformation of atomistic structures with the *.cif* format
 * [***source***](./source): contains the source code. Files have the *.F90* extension
 * [***tools***](./tools): includes all shell files for building, compiling and testing the code automatically.
 * [***tutorial***](./tutorials): contains the input files for the tutorial examples, which are explained in the section 6 of the manual
-* [.gitignore](./.gitignore): instructs Git which file to ignore for development and integration.
 * [CMakeList.txt](./CMakeList.txt): sets the framework for code building and testing with CMake.
 * Jenkinsfile: file with specifications to build and run the testing infrastructure.
 * LICENSE: specification of the BSD 3-Clause License under which ALC_EQCM is registered.
@@ -61,13 +59,13 @@ IMPORTANT: we have identified serious problems with version 2021.10.0 of ifort, 
  bug for version 2021.11.0.
 
 ## Getting started
-The user with account *"username"* can clone the code locally (in machine *"wherever"*) by executing the following command with the SSH protocol
+The user can clone the code locally by executing the following command with the SSH protocol
 ```sh
-username@wherever:/home/username/codes$ git clone git@github.com:stfc/alc_eqcm.git
+$ git clone git@github.com:stfc/alc_eqcm.git
 ```
 Instead, if the user wants to use the HTTPS protocol it must execute
 ```sh
-username@wherever:/home/username/codes$ git clone https://github.com/stfc/alc_eqcm.git
+$ git clone https://github.com/stfc/alc_eqcm.git
 ```
 Both ways generate the ***alc_eqcm*** folder as the root directory. Alternatively, the code can be downloaded from any of the available assets.
 
