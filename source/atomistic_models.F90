@@ -90,7 +90,7 @@ Module atomistic_models
   ! Tolerance for length
   Real(Kind=wp), Parameter, Public :: length_tol = 1.0E-8
   ! Manimum amount of nearest neighbours for a single atom
-  Integer(Kind=wi), Parameter, Public :: max_nn = 12 
+  Integer(Kind=wi), Parameter, Public :: max_nn = 50 
 
   ! Limit for the maximum bond distance
   Real(Kind=wp), Parameter, Public   :: max_intra=2.30_wp  
@@ -414,6 +414,7 @@ Contains
     Integer(Kind=wi)    :: fail(1)
     Character(Len=256)  :: message
 
+
     T%input%max_atoms=T%multiple_input_atoms%value*num_atoms  
     fail=0
 
@@ -504,7 +505,9 @@ Contains
     End Do
 
     Call info(' ', 1)
-    If (Trim(type_sim)=='model_pristine_sample' .Or. Trim(type_sim)=='model_disordered_system') Then
+    If (Trim(type_sim)=='model_pristine_sample' .Or. &
+        Trim(type_sim)=='use_input_structure' .Or. &
+        Trim(type_sim)=='model_disordered_system') Then
       Write (messages(1),'(1x,a)') '====================='
       Write (messages(2),'(1x,a)') 'Build atomistic model'
       Write (messages(3),'(1x,a)') '====================='
@@ -524,7 +527,7 @@ Contains
     ! Refresh out_eqcm
     Call refresh_out_eqcm(files)
      
-    Call print_atomistic_settings(model_data)
+    Call print_atomistic_settings(type_sim, model_data)
     Call read_input_model(files, stoich_data, model_data)
 
     ! Set deposition_level for electrodeposition
@@ -565,7 +568,10 @@ Contains
       Call scale_model(model_data)
     End If
 
-    If (Trim(type_sim)=='model_pristine_sample' .Or. Trim(type_sim)=='model_disordered_system') Then
+    If (Trim(type_sim)=='model_pristine_sample' .Or. &
+        Trim(type_sim)=='model_disordered_system') Then
+      Call stoichiometry_input_model_vs_target(files, stoich_data, model_data)
+    Else If (Trim(type_sim)=='use_input_structure') Then
       Call stoichiometry_input_model(files, stoich_data, model_data)
     End If
 
@@ -573,12 +579,15 @@ Contains
     Call define_cell(model_data, simulation_data)
 
     Call info(' ', 1)
-    If (Trim(type_sim)=='model_pristine_sample' .Or. Trim(type_sim)=='model_disordered_system') Then
-      Call info(' Atomistic details for the generated model of the pristine sample', 1)
-    Else
-      Call info(' Atomistic details for the generated models of the cycled samples', 1)
-    End If
+    If (Trim(type_sim)/='use_input_structure') Then
+      If (Trim(type_sim)=='model_pristine_sample' .Or. & 
+          Trim(type_sim)=='model_disordered_system') Then
+        Call info(' Atomistic details for the generated model of the pristine sample', 1)
+      Else
+        Call info(' Atomistic details for the generated models of the cycled samples', 1)
+      End If
       Call info(' ----------------------------------------------------------------', 1)
+    End If
     ! Print a message with the size of the generated model
     If (model_data%repeat_input_model%fread) Then
       If (model_data%repeat_input_model%value(1)==1 .And. &
@@ -624,17 +633,21 @@ Contains
       Call compute_area_slab(v1,v2,model_data%input%slab_area)
     End If
 
-    ! Opening file for record of relevant modelling settings
-    Open(Newunit=files(FILE_RECORD_MODELS)%unit_no, File=files(FILE_RECORD_MODELS)%filename,Status='Replace')
-    record_unit=files(FILE_RECORD_MODELS)%unit_no
-    Write (record_unit, '(2(3x,a))') Trim(type_sim), Trim(model_data%output_model_format%type) 
+    If (Trim(type_sim)/='use_input_structure') Then
+      ! Opening file for record of relevant modelling settings
+      Open(Newunit=files(FILE_RECORD_MODELS)%unit_no, File=files(FILE_RECORD_MODELS)%filename,Status='Replace')
+      record_unit=files(FILE_RECORD_MODELS)%unit_no
+      Write (record_unit, '(2(3x,a))') Trim(type_sim), Trim(model_data%output_model_format%type) 
+    End If
 
     ic=1
     Do While (ic <= cycles .And. activate_loop)
       jc=1
       Do While (jc <= legs .And. activate_loop)
 
-        If (Trim(type_sim)=='model_pristine_sample' .Or. Trim(type_sim)=='model_disordered_system') Then
+        If (Trim(type_sim)=='model_pristine_sample' .Or. & 
+            Trim(type_sim)=='use_input_structure' .Or. & 
+            Trim(type_sim)=='model_disordered_system') Then
           model_data%num_models_sampling=1
         Else If (Trim(type_sim)=='model_cycled_sample') Then        
           name_leg=redox_data%label_leg(jc,ic)
@@ -693,66 +706,86 @@ Contains
              Call info(messages,1)
            End If
 
-           ! Settings for extra atoms
-           Do i=1, model_data%types_species  
-             model_data%input%species(i)%num_extra=model_data%input%species(i)%num
-           End Do
+           If (Trim(type_sim)/='use_input_structure') Then
+             ! Settings for extra atoms
+             Do i=1, model_data%types_species  
+               model_data%input%species(i)%num_extra=model_data%input%species(i)%num
+             End Do
 
-           Call match_target_stoichiometry(model_data, target_stoich, 'input')
+             Call match_target_stoichiometry(model_data, target_stoich, 'input')
 
-          ! Set initialization for random number: This is done only once when activate_random=.True.
-          !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! 
-          If ((model_data%remove_species .Or. model_data%insert_species) .And. activate_random) Then
-            Call init_random_seed()         
-            activate_random=.False.
-          End If
-          !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! 
+             ! Set initialization for random number: This is done only once when activate_random=.True.
+             !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! 
+             If ((model_data%remove_species .Or. model_data%insert_species) .And. activate_random) Then
+               Call init_random_seed()         
+               activate_random=.False.
+             End If
+             !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! 
 
-          ! Remove species in the input model to match target stoichiometry
-          If (model_data%remove_species) Then
-            Call remove_species(model_data%input, model_data%types_species, process, 'input')
-          End If
+             ! Remove species in the input model to match target stoichiometry
+             If (model_data%remove_species) Then
+               Call remove_species(model_data%input, model_data%types_species, process, 'input')
+             End If
   
-          ! Insert species to match target stoichiometry. This is done after having removed species to make some space
-          If (model_data%insert_species) Then
-            Call insert_species(process, stoich_data, model_data)
+             ! Insert species to match target stoichiometry. This is done after having removed species to make some space
+             If (model_data%insert_species) Then
+               Call insert_species(process, stoich_data, model_data)
+             End If
+
+             ! Calculate the amount of atoms of the modelled sample
+             model_data%sample%num_atoms=model_data%input_times*model_data%input%num_atoms_extra
+
+             ! Allocate atomic arrays for the output model, only once
+             If (alloc_sample_arrays) Then
+               Call model_data%atomic_arrays_model(model_data%sample%num_atoms)  
+               alloc_sample_arrays=.False.
+             End If
+
+             Call define_repeated_model(model_data)
+             Call match_target_stoichiometry(model_data, target_stoich, 'output')
+
+             ! Remove species in the input model to match target stoichiometry
+             If (model_data%remove_species) Then
+               Call remove_species(model_data%sample, model_data%types_species, process, 'sample')
+             End If
+
+             ! Print modelled stoichiometry
+             Call stoichiometry_sample_model(files, target_stoich, model_data)      
+
+             ! Create list
+             Call create_list_net_elements(model_data%sample, model_data%types_species,model_data%both_surfaces%stat)
+
+             ! Print output file
+             Call print_output_files(type_sim, files, model_data, simulation_data, hpc_data, ic, kc, name_leg)
+
+             ! Record relevant settings to file RECORD_MODELS
+             Call record_models(record_unit, model_data)  
+  
+             ! Reset values 
+             If (Trim(process)=='electrodeposition') Then 
+               model_data%input%num_atoms=model_data%input%num_atoms_extra
+               model_data%input%species(:)%num=model_data%input%species(:)%num_extra
+             End If
+
+             Call reset_to_input(model_data)
+          Else
+             ! Calculate the amount of atoms of the modelled sample
+             model_data%sample%num_atoms=model_data%input_times*model_data%input%num_atoms_extra
+
+             ! Allocate atomic arrays for the output model, only once
+             If (alloc_sample_arrays) Then
+               Call model_data%atomic_arrays_model(model_data%sample%num_atoms)  
+               alloc_sample_arrays=.False.
+             End If
+
+             Call define_repeated_model(model_data)
+
+             ! Create list
+             Call create_list_net_elements(model_data%sample, model_data%types_species,model_data%both_surfaces%stat)
+
+            ! Print output file
+            Call print_output_files(type_sim, files, model_data, simulation_data, hpc_data, ic, kc, name_leg)
           End If
-
-          ! Calculate the amount of atoms of the modelled sample
-          model_data%sample%num_atoms=model_data%input_times*model_data%input%num_atoms_extra
-
-          ! Allocate atomic arrays for the output model, only once
-          If (alloc_sample_arrays) Then
-            Call model_data%atomic_arrays_model(model_data%sample%num_atoms)  
-            alloc_sample_arrays=.False.
-          End If
-
-          Call define_repeated_model(model_data)
-          Call match_target_stoichiometry(model_data, target_stoich, 'output')
-
-          ! Remove species in the input model to match target stoichiometry
-          If (model_data%remove_species) Then
-            Call remove_species(model_data%sample, model_data%types_species, process, 'sample')
-          End If
-
-          ! Print modelled stoichiometry
-          Call stoichiometry_sample_model(files, target_stoich, model_data)      
-
-          ! Create list
-          Call create_list_net_elements(model_data%sample, model_data%types_species,model_data%both_surfaces%stat)
-
-          ! Print output file
-          Call print_output_files(type_sim, files, model_data, simulation_data, hpc_data, ic, kc, name_leg)
-
-          ! Record relevant settings to file RECORD_MODELS
-          Call record_models(record_unit, model_data)  
-
-          ! Reset values 
-          If (Trim(process)=='electrodeposition') Then 
-            model_data%input%num_atoms=model_data%input%num_atoms_extra
-            model_data%input%species(:)%num=model_data%input%species(:)%num_extra
-          End If
-          Call reset_to_input(model_data)
 
           ! Record initial time
           Call cpu_time(t_final) 
@@ -1063,45 +1096,57 @@ Contains
   End Subroutine check_atomic_settings
 
 
-  Subroutine print_atomistic_settings(model_data)
+  Subroutine print_atomistic_settings(type_sim, model_data)
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     ! Subroutine to print relevant settings used to building atomistic models
     !
     ! author    - i.scivetti Jan 2021
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    Character(Len=256),  Intent(In   ) :: type_sim
     Type(model_type),    Intent(InOut) :: model_data
 
     Character(Len=256)  :: message
 
-    ! Print stoichiometry error
-    If (model_data%stoichiometry_error%fread) Then
-      Write (message, '(1x,a,f8.3)') 'Error tolerance for the stoichiometry of the generated models:', &
-                                   & model_data%stoichiometry_error%value  
-    Else
-      Write (message, '(1x,a,f8.3)') 'Error tolerance for the stoichiometry of the generated models (default):',&
-                                   & model_data%stoichiometry_error%value  
-    End If
-    Call info(message,1) 
 
-    ! Print delta_space 
-    If (model_data%delta_space%fread) Then
-      Write (message,'(1x,a,f5.3,1x,a)') 'Spatial discretization of the simulation cell: ',&
-                                           & model_data%delta_space%value, '[Angstrom]'
-    Else
-      Write (message,'(1x,a,f5.3,1x,a)') 'Spatial discretization of the simulation cell (default): ', &
-                                          & model_data%delta_space%value, '[Angstrom]'
-    End If
-    Call info(message,1) 
+    If (Trim(type_sim)/='use_input_structure') Then
+      ! Print stoichiometry error
+      If (model_data%stoichiometry_error%fread) Then
+        Write (message, '(1x,a,f8.3)') 'Error tolerance for the stoichiometry of the generated models:', &
+                                     & model_data%stoichiometry_error%value  
+      Else
+        Write (message, '(1x,a,f8.3)') 'Error tolerance for the stoichiometry of the generated models (default):',&
+                                     & model_data%stoichiometry_error%value  
+      End If
+      Call info(message,1) 
+  
+      ! Print delta_space 
+      If (model_data%delta_space%fread) Then
+        Write (message,'(1x,a,f5.3,1x,a)') 'Spatial discretization of the simulation cell: ',&
+                                             & model_data%delta_space%value, '[Angstrom]'
+      Else
+        Write (message,'(1x,a,f5.3,1x,a)') 'Spatial discretization of the simulation cell (default): ', &
+                                            & model_data%delta_space%value, '[Angstrom]'
+      End If
+      Call info(message,1) 
+  
+      ! Print distance_cutoff
+      If (model_data%distance_cutoff%fread) Then
+        Write (message,'(1x,a,f4.2,1x,a)') 'Minimum separation distance between species: ',&
+                                             & model_data%distance_cutoff%value, '[Angstrom]'
+      Else
+        Write (message,'(1x,a,f4.2,1x,a)') 'Minimum separation distance between species (default): ', &
+                                            & model_data%distance_cutoff%value, '[Angstrom]'
+      End If
+      Call info(message,1) 
 
-    ! Print distance_cutoff
-    If (model_data%distance_cutoff%fread) Then
-      Write (message,'(1x,a,f4.2,1x,a)') 'Minimum separation distance between species: ',&
-                                           & model_data%distance_cutoff%value, '[Angstrom]'
-    Else
-      Write (message,'(1x,a,f4.2,1x,a)') 'Minimum separation distance between species (default): ', &
-                                          & model_data%distance_cutoff%value, '[Angstrom]'
+      ! Print in case rotations are prevented 
+      If (.Not. model_data%rotate_species%stat) Then
+        Write (message, '(1x,a)') 'In case there are molecular species to being incorparated to the model, they will&
+                                 & not be randomly rotated but keep their orientation, as defined in the corresponding xyz files'
+        Call info(message,1) 
+      End If
+
     End If
-    Call info(message,1) 
 
     ! Print format for input/output
     Write (message, '(2(1x,a))') 'Format for input model:    ', Trim(model_data%input_model_format%type)
@@ -1109,13 +1154,6 @@ Contains
      
     Write (message, '(2(1x,a))') 'Format for output model(s):', Trim(model_data%output_model_format%type)
     Call info(message,1) 
-
-    ! Print in case rotations are prevented 
-    If (.Not. model_data%rotate_species%stat) Then
-      Write (message, '(1x,a)') 'In case there are molecular species to being incorparated to the model, they will&
-                               & not be randomly rotated but keep their orientation, as defined in the corresponding xyz files'
-      Call info(message,1) 
-    End If
 
   End Subroutine print_atomistic_settings 
 
@@ -1125,6 +1163,45 @@ Contains
     ! pristine sample and the stoichiometry of the input model (table format) 
     !
     ! author    - i.scivetti Feb 2021
+    ! refact    - i.scivetti Jul 2024
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    Type(file_type),     Intent(InOut) :: files(:)
+    Type(stoich_type),   Intent(In   ) :: stoich_data
+    Type(model_type),    Intent(In   ) :: model_data
+
+    Integer(Kind=wi)   :: i
+    Character(Len=256) :: message
+    Character(Len= 64) :: fmt0, fmt1, fmt2
+   
+    fmt0='(15x,a)'
+    fmt1='(6x,a,2x,a,3x,a)'
+    fmt2='(1x,a12,4x,i7,x,f12.3)'
+
+    Call info(' ', 1)
+    Write (message,'(1x,2a)') 'Atomistic details for the input structure provided in file '//Trim(FOLDER_INPUT_GEOM)//&
+                            &'/'//Trim(files(FILE_INPUT_STRUCTURE)%filename) 
+    Call info(message, 1)
+  
+    Call info(' ------------------------------------------', 1)
+    Write (message, fmt0)            '|  Total  |' 
+    Call info(message,1)
+    Write (message, fmt1) 'Species', '|  number |', 'Stoichiometry'
+    Call info(message,1)
+    Call info(' ------------------------------------------', 1)
+    Do i=1, stoich_data%num_species%value
+      Write (message, fmt2)  Trim(stoich_data%species(i)%tag), model_data%input%species(i)%num, model_data%input%species(i)%s
+      Call info(message,1)
+    End Do
+    Call info(' ------------------------------------------', 1)
+
+  End Subroutine stoichiometry_input_model
+
+  Subroutine stoichiometry_input_model_vs_target(files, stoich_data, model_data)
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    ! Subroutine to print the comparison between the target stoichiometry of the 
+    ! pristine sample and the stoichiometry of the input model (table format) 
+    !
+    ! author    - i.scivetti July 2024
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     Type(file_type),     Intent(InOut) :: files(:)
     Type(stoich_type),   Intent(In   ) :: stoich_data
@@ -1135,7 +1212,7 @@ Contains
     Character(Len= 64) :: fmt0, fmt1, fmt2, fmt3
     Real(Kind=wp)      :: error
     
-    fmt0='(15x,a,13x,a))'
+    fmt0='(15x,a,13x,a)'
     fmt1='(6x,a,2x,4(a,6x))'
     fmt2='(1x,a12,4x,i7,x,f12.3,x,f12.3,x,f12.3)'
     fmt3='(1x,a12,4x,i7,x,f12.3,x,f12.3,x,f12.3,a)'
@@ -1164,7 +1241,7 @@ Contains
     End Do
     Call info(' ----------------------------------------------------------------', 1)
 
-  End Subroutine stoichiometry_input_model
+  End Subroutine stoichiometry_input_model_vs_target
 
   Subroutine stoichiometry_sample_model(files, target_stoich, model_data)
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -1702,6 +1779,10 @@ Contains
       Write (path,'(a)') Trim(FOLDER_MODELS)//'/pristine' 
       exec_mkdir='mkdir '//Trim(path)
       Call execute_command_line('[ ! -d '//Trim(path)//' ] && '//Trim(exec_mkdir))
+    Else If (Trim(type_sim)=='use_input_structure') Then
+      Write (path,'(a)') Trim(FOLDER_MODELS)//'/input_structure'
+      exec_mkdir='mkdir '//Trim(path)
+      Call execute_command_line('[ ! -d '//Trim(path)//' ] && '//Trim(exec_mkdir))
     Else If (Trim(type_sim)=='model_disordered_system') Then
       Write (path,'(a)') Trim(FOLDER_MODELS)//'/disordered' 
       exec_mkdir='mkdir '//Trim(path)
@@ -1746,16 +1827,20 @@ Contains
       Call print_simulation_files(path, files, model_data, simulation_data, hpc_data)
     End If
 
-    ! MOving structure
+    ! Moving structure
     exec_mv='mv '//Trim(files(FILE_OUTPUT_STRUCTURE)%filename)//' '//Trim(path)//'/'//Trim(filename)
     Call execute_command_line(exec_mv)
       
-    ! Move MODEL_SUMMARY files
-    exec_mv='mv '//Trim(files(FILE_MODEL_SUMMARY)%filename)//' '//Trim(path)//'/'//Trim(files(FILE_MODEL_SUMMARY)%filename)
-    Call execute_command_line(exec_mv)
+    If (Trim(type_sim)/='use_input_structure') Then
+      ! Move MODEL_SUMMARY files
+      exec_mv='mv '//Trim(files(FILE_MODEL_SUMMARY)%filename)//' '//Trim(path)//'/'//Trim(files(FILE_MODEL_SUMMARY)%filename)
+      Call execute_command_line(exec_mv)
+    End If
 
     model_data%sample%path=path
-    If (Trim(type_sim) == 'model_cycled_sample')Call info(' ',1)
+    If (Trim(type_sim) == 'model_cycled_sample') Then
+      Call info(' ',1)
+    End If
 
   End Subroutine print_output_files 
 
@@ -3287,10 +3372,10 @@ Contains
     If (Trim(model_data%input_model_format%type) == 'vasp') Then
         Call read_input_vasp_format(files, stoich_data, model_data)
     Else If (Trim(model_data%input_model_format%type) == 'xyz') Then
-            Call read_input_xyz_format(files, model_data)
+        Call read_input_xyz_format(files, model_data)
     Else If (Trim(model_data%input_model_format%type) == 'castep' .Or. & 
-            Trim(model_data%input_model_format%type) == 'onetep') Then
-            Call read_input_geom_format(files, model_data)  
+             Trim(model_data%input_model_format%type) == 'onetep') Then
+        Call read_input_geom_format(files, model_data)  
     End If
 
     Call about_cell(model_data%input%cell,model_data%input%invcell,model_data%input%cell_length)
@@ -4315,7 +4400,7 @@ Contains
         If (.Not. model_data%input%atom(ka)%in_species) Then
           model_data%input%atom(ka)%in_species=.True.
           num_tot=num_tot+1
-          If (num_tot+nacc == model_data%input%species(iin)%atoms_per_species) Then
+          If (num_tot+nacc > model_data%input%species(iin)%atoms_per_species) Then
             Do knni= 1, nacc
               model_data%input%atom(list_nn_next(knni))%in_species=.True.
             End Do

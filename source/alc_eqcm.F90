@@ -105,6 +105,7 @@ Implicit None
 
   If (Trim(eqcm_data%analysis%type) /= 'hpc_simulation_files') Then
     If (eqcm_data%analysis%type     /= 'model_pristine_sample' .And. &
+        eqcm_data%analysis%type     /= 'use_input_structure' .And. & 
         eqcm_data%analysis%type     /= 'model_disordered_system') Then 
       !Read settings from DATA_EQCM
       Call read_eqcm_data(files, eqcm_data, fftnmax)
@@ -170,6 +171,7 @@ Implicit None
     ! If &block_hpc_settings is defined, ALC_EQCM generates script files for job submission
     If (eqcm_data%analysis%type == 'model_pristine_sample'   .Or. &
         eqcm_data%analysis%type == 'model_disordered_system' .Or. &
+        eqcm_data%analysis%type == 'use_input_structure'   .Or. &
         eqcm_data%analysis%type=='model_cycled_sample') Then
       Call build_atomistic_models(files, electrode_data, eqcm_data, redox_data,&
                                 & stoich_data, model_data, simulation_data, hpc_data) 

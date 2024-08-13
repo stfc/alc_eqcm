@@ -112,3 +112,6 @@ test 71: Intercalation/De-intercalation of Li+ ions into/from a (NiOH)2 host
 ##########################################
 test 72: Example adapted to test 9
 test 73: Example adapted to test 18
+
+### Aditional tests
+test 74: test for use_input_structure

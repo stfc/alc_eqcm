@@ -507,7 +507,7 @@ Contains
     Integer(Kind=wi)   ::  j
  
     Character(Len=256) :: message
-    Character(Len=256) :: messages(12)
+    Character(Len=256) :: messages(13)
     Character(Len=64 ) :: error_set_eqcm 
     Logical            :: fprint, error
 
@@ -526,6 +526,7 @@ Contains
        eqcm_data%analysis%type /= 'stoichiometry'           .And.  &
        eqcm_data%analysis%type /= 'model_pristine_sample'   .And.  &
        eqcm_data%analysis%type /= 'model_cycled_sample'     .And.  &
+       eqcm_data%analysis%type /= 'use_input_structure'   .And.  &
        eqcm_data%analysis%type /= 'model_disordered_system' .And.  &
        eqcm_data%analysis%type /= 'hpc_simulation_files' ) Then 
       Write (message,'(2(1x,a))')  Trim(error_set_eqcm), 'No (or wrong) specification for directive "analysis"' 
@@ -540,9 +541,10 @@ Contains
       Write (messages(8),'(1x,a)')  '- Stoichiometry'  
       Write (messages(9),'(1x,a)')  '- Model_pristine_sample'
       Write (messages(10),'(1x,a)') '- Model_cycled_sample' 
-      Write (messages(11),'(1x,a)') '- Model_disordered_system' 
-      Write (messages(12),'(1x,a)') '- hpc_simulation_files'
-      Call info(messages,12)
+      Write (messages(11),'(1x,a)') '- Use_input_structure' 
+      Write (messages(12),'(1x,a)') '- Model_disordered_system' 
+      Write (messages(13),'(1x,a)') '- HPC_simulation_files'
+      Call info(messages,13)
       Call error_stop(' ') 
     Else
       Call info(' ',1)
@@ -607,6 +609,12 @@ Contains
         Write (messages(3),'(1x,a)')  'system before EQCM cycling. Thus, the generated model does not depend on the EQCM data.'
         Write (messages(4),'(1x,a)')  'If defined, directives related to EQCM specification and data analysis will be ignored.'
         Call info(messages,4)
+      Else If (eqcm_data%analysis%type == 'use_input_structure' ) Then
+        Write (messages(1),'(1x,a)')  'This option uses the atomic structure of the INPUT_STRUCTURE file without further'
+        Write (messages(2),'(1x,a)')  'stoichiometric adjustments. If the &block_simulation_settings block is defined'
+        Write (messages(3),'(1x,a)')  'input files for simulation of the model will be generated.'
+        Write (messages(4),'(1x,a)')  'If defined, directives related to EQCM specification and data analysis will be ignored.'
+        Call info(messages,4)
       Else If (eqcm_data%analysis%type == 'model_disordered_system' ) Then
         Write (messages(1),'(1x,a)')  'This option generates a single atomistic model of a disordered system, whose stoichiometry'
         Write (messages(2),'(1x,a)')  'will be set to approximate the values defined in &block_species. The generated'
@@ -634,6 +642,7 @@ Contains
     fprint=.True.
     If (eqcm_data%analysis%type== 'model_pristine_sample'    .Or. &
         eqcm_data%analysis%type== 'model_disordered_system'  .Or. &
+        eqcm_data%analysis%type== 'use_input_structure'    .Or. &
         eqcm_data%analysis%type== 'hpc_simulation_files') Then
       fprint=.False.
     End If
@@ -1186,8 +1195,9 @@ Contains
 
   ! Settings for atomistic modelling
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    If (Trim(eqcm_data%analysis%type) == 'model_pristine_sample' .Or. &
-       Trim(eqcm_data%analysis%type) == 'model_cycled_sample'   .Or. &
+    If (Trim(eqcm_data%analysis%type) == 'model_pristine_sample'  .Or. &
+       Trim(eqcm_data%analysis%type) == 'model_cycled_sample'     .Or. &
+       Trim(eqcm_data%analysis%type) == 'use_input_structure'   .Or. &
        Trim(eqcm_data%analysis%type) == 'model_disordered_system' .Or. &
        Trim(eqcm_data%analysis%type) == 'hpc_simulation_files' ) Then
 
@@ -1234,6 +1244,8 @@ Contains
           End If
         End If
       End If
+
+     
 
       ! multiple_input_atoms 
       If (model_data%multiple_input_atoms%fread) Then
@@ -1447,6 +1459,7 @@ Contains
     If (Trim(eqcm_data%analysis%type) /= 'hpc_simulation_files') Then
       If (Trim(eqcm_data%analysis%type) /= 'model_pristine_sample'   .And. &
          Trim(eqcm_data%analysis%type) /= 'model_disordered_system' .And. &
+         Trim(eqcm_data%analysis%type) /= 'use_input_structure' .And. &
          Trim(eqcm_data%analysis%type) /= 'model_cycled_sample') Then
         If (simulation_data%generate .Or. hpc_data%generate) Then
            Write (messages(1),'(2(1x,a))') Trim(error_set_eqcm), &
@@ -1455,14 +1468,16 @@ Contains
            Write (messages(2),'(1x,a)') 'Any of these features, however, requires that directive "Analysis" is set to either:' 
            Write (messages(3),'(1x,a)')  ' - model_pristine_sample'
            Write (messages(4),'(1x,a)')  ' - model_cycled_sample'
-           Write (messages(5),'(1x,a)')  ' - model_disordered_system'
-           Write (messages(6),'(1x,a)')  ' - hpc_simulation_files'
-           Write (messages(7),'(1x,a)')  'Please correct the settings.'
-           Call info(messages, 7)
+           Write (messages(5),'(1x,a)')  ' - use_input_structure'
+           Write (messages(6),'(1x,a)')  ' - model_disordered_system'
+           Write (messages(7),'(1x,a)')  ' - hpc_simulation_files'
+           Write (messages(8),'(1x,a)')  'Please correct the settings.'
+           Call info(messages, 8)
            Call error_stop(' ')
         End If
-      Else If (Trim(eqcm_data%analysis%type) == 'model_pristine_sample' .Or. &
+      Else If (Trim(eqcm_data%analysis%type) == 'model_pristine_sample'  .Or. &
               Trim(eqcm_data%analysis%type) == 'model_disordered_system' .Or. &
+              Trim(eqcm_data%analysis%type) == 'use_input_structure'   .Or. &
               Trim(eqcm_data%analysis%type) == 'model_cycled_sample') Then  
         If (simulation_data%generate) Then
           simulation_data%code_format=model_data%output_model_format%type
@@ -1501,6 +1516,7 @@ Contains
     If (eqcm_data%analysis%type /= 'print_eqcm_raw'          .And.  &
         eqcm_data%analysis%type /= 'print_eqcm_filter'       .And.  &
         eqcm_data%analysis%type /= 'model_pristine_sample'   .And.  &
+        eqcm_data%analysis%type /= 'use_input_structure'   .And.  &
         eqcm_data%analysis%type /= 'model_disordered_system' .And.  &
         eqcm_data%analysis%type /= 'hpc_simulation_files'    .And.  & 
         eqcm_data%analysis%type /= 'spectra') Then
@@ -1547,6 +1563,7 @@ Contains
     ! Create folder ANALYSIS
     If (eqcm_data%analysis%type /= 'hpc_simulation_files'    .And. &
         eqcm_data%analysis%type /= 'model_disordered_system' .And. &
+        eqcm_data%analysis%type /= 'use_input_structure'   .And. &
         eqcm_data%analysis%type /= 'model_pristine_sample') Then
        Call execute_command_line('[ ! -d '//Trim(FOLDER_ANALYSIS)//' ] && '//'mkdir '//Trim(FOLDER_ANALYSIS)) 
     End If

@@ -278,7 +278,7 @@ Contains
         Call error_stop(' ')
       End If
 
-      If (simulation_data%dft%spin_polarised%fread .And. Trim(simulation_data%dft%vdw%type) /= 'dft-d2') Then
+      If (simulation_data%dft%spin_polarised%stat .And. Trim(simulation_data%dft%vdw%type) /= 'dft-d2') Then
          Write (message,'(1x,2a)') Trim(error_dft), ' Spin-polarisation with non-local vdW corrections is not supported&
                                 & in ONETEP. For spin-polarised-vdW use the DFT-D2 method of Grimme.'
         Call error_stop(message)

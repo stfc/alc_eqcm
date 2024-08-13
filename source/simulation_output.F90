@@ -130,13 +130,13 @@ Contains
           Write (message,'(1x,4a)') Trim(error_block), &
                                     &' Invalid specification for directive "simulation_type": ',  &
                                     & Trim(simulation_data%simulation%type),& 
-                                    &'. Have you missed the specification? Valid options: "relaxation" and "MD"'
+                                    &'. Have you missed the specification? Valid options: "relax_geometry" and "MD"'
           Call error_stop(message)
         End If
       End If
     Else 
       Write (message,'(2(1x,a))') Trim(error_block),&
-                               & 'The user must specify directive "simulation_type" (either relaxation or MD)'
+                               & 'The user must specify directive "simulation_type" (either relax_geometry or MD)'
       Call error_stop(message)
     End If
 
@@ -1152,7 +1152,7 @@ Contains
       End If
     Else
       If (Trim(simulation_data%simulation%type) == 'relax_geometry') Then
-        Write (message,'(2(1x,a))') Trim(error_motion), 'The user must specify directive "relax_method" for relaxation'
+        Write (message,'(2(1x,a))') Trim(error_motion), 'The user must specify directive "relax_method" for relax_geometry'
         Call error_stop(message)        
       End If
     End If
@@ -1160,7 +1160,7 @@ Contains
     ! Condition for masses
     If (simulation_data%motion%mass_info%stat) Then
        If (Trim(simulation_data%simulation%type) == 'relax_geometry') Then
-        Write (message,'(2(1x,a))') Trim(error_motion), 'Definition of block &masses is not needed for geometry relaxation.&
+        Write (message,'(2(1x,a))') Trim(error_motion), 'Definition of block &masses is not needed for geometry relax_geometry.&
                                    & Please remove it.'
         Call error_stop(message)        
        End If
@@ -1192,7 +1192,7 @@ Contains
           Call error_stop(' ')
         Else
           If (Trim(simulation_data%simulation%type) == 'relax_geometry') Then
-             Write (message,'(2(1x,a))') Trim(error_motion), 'Directive "ensemble" is irrelevant for geometry relaxation.&
+             Write (message,'(2(1x,a))') Trim(error_motion), 'Directive "ensemble" is irrelevant for geometry relax_geometry.&
                                        & Please remove it'
              Call error_stop(message)
           End If
@@ -1231,7 +1231,7 @@ Contains
         Call error_stop(message)
       Else
         If (simulation_data%motion%ion_steps%value <= 0) Then
-          Write (message,'(1x,2a)') Trim(error_motion), ' Number of "ion_step" must be larger than 0 (at least)'
+          Write (message,'(1x,2a)') Trim(error_motion), ' Number of "ion_step" must be larger than 0'
           Call error_stop(message)
         End If
       End If
@@ -1248,7 +1248,7 @@ Contains
       Else
         If (Trim(simulation_data%simulation%type) == 'relax_geometry') Then
           Write (message,'(2(1x,a))') Trim(error_motion),& 
-                                    &'Specification of "timestep" is not meaningful for "relaxation". Please remove it.'
+                                    &'Specification of "timestep" is not meaningful for "relax_geometry". Please remove it.'
           Call error_stop(message)
         End If        
         
@@ -1297,7 +1297,7 @@ Contains
       Else
         If (Trim(simulation_data%simulation%type) == 'relax_geometry') Then
           Write (message,'(2(1x,a))') Trim(error_motion),& 
-                                    &'Specification of "temperature" is not meaningful for "relaxation". Please remove it.'
+                                    &'Specification of "temperature" is not meaningful for "relax_geometry". Please remove it.'
           Call error_stop(message)
         End If        
         If (simulation_data%motion%temperature%value <= 0.0_wp) Then
@@ -1326,7 +1326,7 @@ Contains
       Else
         If (Trim(simulation_data%simulation%type) == 'relax_geometry') Then
           Write (message,'(2(1x,a))') Trim(error_motion),& 
-                                    &'Specification of "thermostat" is not meaningful for "relaxation". Please remove it.'
+                                    &'Specification of "thermostat" is not meaningful for "relax_geometry". Please remove it.'
           Call error_stop(message)
         End If        
         If (Trim(simulation_data%motion%ensemble%type) == 'nve' .Or. &
@@ -1355,7 +1355,7 @@ Contains
       Else
         If (Trim(simulation_data%simulation%type) == 'relax_geometry') Then
           Write (message,'(2(1x,a))') Trim(error_motion),& 
-                                    &'Specification of "relax_time_thermostat" is not meaningful for "relaxation".&
+                                    &'Specification of "relax_time_thermostat" is not meaningful for "relax_geometry".&
                                     & Please remove it.'
           Call error_stop(message)
         End If        
@@ -1428,7 +1428,7 @@ Contains
       Else
         If (Trim(simulation_data%simulation%type) == 'relax_geometry') Then
           Write (message,'(2(1x,a))') Trim(error_motion),& 
-                                    &'Specification of "barostat" is not meaningful for "relaxation". Please remove it.'
+                                    &'Specification of "barostat" is not meaningful for "relax_geometry". Please remove it.'
           Call error_stop(message)
         End If        
         If (Trim(simulation_data%motion%ensemble%type) == 'nve' .Or. &
@@ -1471,7 +1471,7 @@ Contains
       Else
         If (Trim(simulation_data%simulation%type) == 'relax_geometry') Then
           Write (message,'(2(1x,a))') Trim(error_motion),& 
-                                    &'Specification of "relax_time_barostat" is not meaningful for "relaxation".&
+                                    &'Specification of "relax_time_barostat" is not meaningful for "relax_geometry".&
                                     & Please remove it.'
           Call error_stop(message)
         End If        
@@ -1787,7 +1787,7 @@ Contains
     End If        
 
     ! Spin polarization 
-    If (simulation_data%dft%spin_polarised%fread) Then
+    If (simulation_data%dft%spin_polarised%stat) Then
        Write (messages(1),'(1x,a)')         '- spin-polarised calculation'
     Else
        Write (messages(1),'(1x,a)')         '- non-spin-polarised calculation'

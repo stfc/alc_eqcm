@@ -361,7 +361,7 @@ Contains
 
     ! max_l_orbital   
     If (.Not. simulation_data%dft%max_l_orbital%fread) Then
-      If (simulation_data%dft%spin_polarised%fread) Then
+      If (simulation_data%dft%spin_polarised%stat) Then
         Write (message,'(2(1x,a))') Trim(error_dft), 'For VASP settings, spin polarised calculations requires&
                                    & the specification of "max_l_orbital"'
         Call error_stop(message)
