@@ -91,27 +91,15 @@ test 59: Test 50 adapted to generate simulations files for ONETEP execution. No 
 test 60: Test 48 adapted to generate simulations files for VASP   execution. No &pseudo_potentials 
 test 61: Test 49 adapted to generate simulations files for VASP   execution. No &pseudo_potentials. Geometry relaxation
 test 62: Test 49 adapted to generate simulations files for VASP   execution. No &pseudo_potentials. No vdW corrections. Molecular dynamics
-test 63: GC+EDFT test for ONETEP. Pt surface with H+ deposited in contact with few layers of water. No &pseudo_potentials
-
-## Implicit solvent
-test 64: GC+EDFT test for ONETEP. Pt surface with H+ deposited in contact with few layers of water. No &pseudo_potentials. Implicit solvent: andreussi, fixed cavity, SASA apolar corrections
-test 65: GC+EDFT test for ONETEP. Pt surface with H+ deposited in contact with few layers of water. No &pseudo_potentials. Implicit solvent: FGF model, fixed cavity, SAV apolar corrections
-test 66: GC+EDFT test for ONETEP. Pt surface with H+ deposited in contact with few layers of water. No &pseudo_potentials. Implicit solvent: soft_spheres model, fixed cavity, only cavitation
-test 67: GC+EDFT test for ONETEP. Pt surface with H+ deposited in contact with few layers of water. No &pseudo_potentials. Implicit solvent: soft_spheres model, self-consistent cavity, SASA apolar correction
-
-## Implicit solvent + Boltzmann electrolye
-test 68: Test 64 with NaCl electrolyte. Full solver.
-test 69: Test 64 with NaCl electrolyte. Linearised solver.
-test 70: Test 64 with NaCl electrolyte. Soft-sphere radii
 
 ## EQCM characterization, stoichiometry and modelling for a given voltage range
-test 71: Intercalation/De-intercalation of Li+ ions into/from a (NiOH)2 host 
+test 63: Intercalation/De-intercalation of Li+ ions into/from a (NiOH)2 host 
 
 ##########################################
 # Computation of mole fluxes and ionic currents
 ##########################################
-test 72: Example adapted to test 9
-test 73: Example adapted to test 18
+test 64: Example adapted to test 9
+test 65: Example adapted to test 18
 
 ### Aditional tests
-test 74: test for use_input_structure
+test 66: test for use_input_structure

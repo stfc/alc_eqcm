@@ -13,7 +13,7 @@
 ! input files for simulations and/or HPC scripts if the user decides any 
 ! parameter must be adjusted without the need to re-generate atomistic models    
 !
-! Copyright: 2022-2024 Ada Lovelace Centre (ALC)
+! Copyright: 2022-2026 Ada Lovelace Centre (ALC)
 !             Scientific Computing Department (SCD)
 !             The Science and Technology Facilities Council (STFC)
 !
@@ -180,6 +180,8 @@ Module atomistic_models
     Character(Len=256) :: path 
     ! Cell vectors 
     Real(Kind=wp)      :: cell(3,3)
+    ! normal 
+    Real(Kind=wp)      :: normal(3)        
     ! Inverse cell vectors
     Real(Kind=wp)      :: invcell(3,3)
     ! Length of cell vectors
@@ -212,6 +214,8 @@ Module atomistic_models
     Logical                   :: both_surfaces
     ! Invert atom
     Real(Kind=wp)             :: inverted(3)
+    ! Surface shift
+    Real(Kind=wp)             :: surface_shift(3)
   End Type  
 
   ! Type for the modelling related variables 
@@ -250,11 +254,11 @@ Module atomistic_models
     Type(in_integer_array), Public  :: repeat_input_model 
     ! Number of different species types
     Integer(Kind=wi) :: types_species 
-    ! Type for those components defined in block_input_composition
+    ! Block for tags and amount of atoms that compose the input model
     Type(component_in_block), Public  ::  block_component
     ! Block with vectors for the input structure model 
     Type(in_string), Public  :: block_input_cell 
-    ! Block for tags and amount of atoms that compose the input model
+    ! Type for those components defined in block_input_composition
     Type(in_string), Public  :: block_input_composition 
     ! Input model 
     Type(sample_type), Public  :: input 
@@ -489,7 +493,6 @@ Contains
     Integer(Kind=wi)   :: i, ic, jc, kc, record_unit
     Integer(Kind=wi)   :: cycles, legs
     Integer(Kind=wi)   :: fail(1)
-    Logical            :: fortho
     !Time related variables
     Real(Kind=wp)      :: t_ini, t_final
   
@@ -540,14 +543,15 @@ Contains
       Call shift_structure(model_data, process)
     End If
     
-    If (simulation_data%solvation%info%stat) Then
-      Call check_orthorhombic_cell(model_data%input%cell, fortho) 
-      If (.Not.fortho) Then
-        Write (message,'(1x,1a)') '***ERROR: computation with implicit solvent is only possible for&
-                                 & orthorhombic cells.'
-        Call error_stop(message)
-      End If        
+    If (Trim(process)=='electrodeposition') Then
+      If (model_data%deposition_level%fread) Then
+        Call check_deposition_level(model_data)
+      End If
+      If (model_data%both_surfaces%stat) Then
+        Call surface_shift(stoich_data, model_data)          
+      End If
     End If
+    
     Call check_cell_consistency(model_data)
     Call model_data%species_arrays(stoich_data)  
     Call compute_stoichiometry_input(stoich_data, model_data)
@@ -602,7 +606,7 @@ Contains
                                       & ') times the input model along its cell vectors.'
       End If 
     Else
-      Write (message,'(1x,a)') 'By default, the generated model(s) have the same as the input model.&
+      Write (message,'(1x,a)') 'By default, the size of the generated model is the same than the input model.&
                                & The user can increase the size with directive&
                                & "repeat_input_model".'
     End If 
@@ -925,12 +929,15 @@ Contains
     Type(model_type),  Intent(InOut) :: model_data
 
     Integer(Kind=wi) :: i
+    Character(Len=64)  :: net_elements
+    
+    Write (net_elements,*) model_data%sample%list%net_elements
 
     Write (record_unit,*) Trim(model_data%sample%path)
-    Write (record_unit,*) model_data%sample%list%net_elements
+    Write (record_unit,'(1x,a)') Trim(Adjustl(net_elements))
     Write (record_unit,'(*(6x,a4))') (Trim(model_data%sample%list%tag(i)), i=1, model_data%sample%list%net_elements)
     Write (record_unit,'(*(6x,a4))') (model_data%sample%list%element(i), i=1, model_data%sample%list%net_elements)
-    Write (record_unit,'(*(2x,i8))')    (model_data%sample%list%N0(i),  i=1, model_data%sample%list%net_elements)
+    Write (record_unit,'(*(2x,i8))') (model_data%sample%list%N0(i),  i=1, model_data%sample%list%net_elements)
 
   End Subroutine record_models
    
@@ -949,6 +956,14 @@ Contains
     Integer(Kind=wi)    :: i
 
     error_set_eqcm = '***ERROR in file '//Trim(files(FILE_SET_EQCM)%filename)//' -'
+
+    ! Check &block_input_composition
+    If (.Not. model_data%block_input_composition%fread) Then
+      Write (messages(1),'(2a)')  Trim(error_set_eqcm),&
+                              & 'Building atomistic models requires the specification of &block_input_composition'
+      Call info(messages,1)
+      Call error_stop(' ')
+    End If
 
     ! Check "input_model_format"
     If (model_data%input_model_format%fread) Then
@@ -1060,13 +1075,6 @@ Contains
          Call info(messages,1)
          Call error_stop(' ')
       End If
-    End If
-
-    If (.Not. model_data%block_input_composition%fread) Then
-      Write (messages(1),'(2a)')  Trim(error_set_eqcm),&
-                              & 'Building atomistic models requires the specification of &block_input_composition'
-      Call info(messages,1)
-      Call error_stop(' ')
     End If
 
     If (Trim(model_data%input_model_format%type) == 'cif') Then
@@ -1716,6 +1724,7 @@ Contains
     !
     ! author         - i.scivetti Jan 2021
     ! contribution   - i.scivetti May 2021
+    ! contribution   - i.scivetti Apr 2026
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     Character(Len=32), Intent(In   ) :: type_sim
     Type(file_type),   Intent(InOut) :: files(:)
@@ -1731,13 +1740,26 @@ Contains
     Character(Len=256) :: filename, path, modchar
     Character(Len=3)   :: ic_char
     
-    Integer(Kind=wi)   :: nfixed , i, j, isp
+    Integer(Kind=wi)   :: nfixed , i, j, isp, indx
+    
+    Real(Kind=wp)      :: l(3)
     
     fileformat=model_data%output_model_format%type
     filename='SAMPLE.'//Trim(fileformat)
-
+    
     ! compute the geometrical centre of the slab, only if the "both_surfaces" directive is activated
     If (model_data%both_surfaces%stat) Then
+      If (Trim(model_data%normal_vector%type)=='c3') Then
+         indx=3
+      ElseIf (Trim(model_data%normal_vector%type)=='c2') Then
+         indx=2
+      ElseIf (Trim(model_data%normal_vector%type)=='c1') Then
+         indx=1
+      End If
+
+      l(:)=model_data%sample%cell(indx,:)
+      Call normal_along_vector(l,model_data%sample%normal)        
+
       model_data%sample%slab_centre=0.0_wp
       nfixed=0
       Do isp = 1, model_data%types_species
@@ -1745,7 +1767,7 @@ Contains
           Do i=1, model_data%sample%num_atoms
             If ((.Not. model_data%sample%atom(i)%vanish) .And.&
                (Trim(model_data%sample%atom(i)%tag)==Trim(model_data%sample%species(isp)%component%tag(j))) ) Then
-              If (.Not. model_data%sample%species(isp)%change_content) Then
+              If (Trim(model_data%sample%species(isp)%topology)=='crystal') Then
                 model_data%sample%slab_centre=model_data%sample%slab_centre+model_data%sample%atom(i)%r
                 nfixed=nfixed+1
               End If
@@ -1756,6 +1778,8 @@ Contains
       model_data%sample%both_surfaces=.True.
       model_data%sample%slab_centre=model_data%sample%slab_centre/Real(nfixed,Kind=wp)
     End If
+    
+    
     
     If (Trim(fileformat)=='vasp') Then
       Call print_vasp_output(files, model_data%sample, model_data%types_species, model_data%selective_dyn,  simulation_data)
@@ -2008,13 +2032,13 @@ Contains
             If (dynamics) Then
               Write (iunit, '(3f20.12,3l3)') T%atom(i)%r, T%atom(i)%dynamics
               If (T%species(isp)%change_content .And. T%both_surfaces) Then
-                T%inverted(:)=2.0_wp*T%slab_centre(:)-T%atom(i)%r(:)
+                Call place_at_opposite_surface(T, i)
                 Write (iunit, '(3f20.12,3l3)') T%inverted, T%atom(i)%dynamics
               End If
             Else
               Write (iunit, '(3f20.12,3l3)') T%atom(i)%r
               If (T%species(isp)%change_content .And. T%both_surfaces) Then
-                T%inverted(:)=2.0_wp*T%slab_centre(:)-T%atom(i)%r(:)
+                Call place_at_opposite_surface(T, i)
                 Write (iunit, '(3f20.12)') T%inverted
               End If
             End If
@@ -2078,13 +2102,13 @@ Contains
             If (dynamics) Then
               Write (iunit, '(3f20.12,3l3)') T%atom(i)%r, T%atom(i)%dynamics
               If (T%species(isp)%change_content .And. T%both_surfaces) Then
-                T%inverted(:)=2.0_wp*T%slab_centre(:)-T%atom(i)%r(:)
+                Call place_at_opposite_surface(T, i)
                 Write (iunit, '(3f20.12,3l3)') T%inverted, T%atom(i)%dynamics
               End If
             Else
               Write (iunit, '(3f20.12,3l3)') T%atom(i)%r
               If (T%species(isp)%change_content .And. T%both_surfaces) Then
-                T%inverted(:)=2.0_wp*T%slab_centre(:)-T%atom(i)%r(:)
+                Call place_at_opposite_surface(T, i)
                 Write (iunit, '(3f20.12)') T%inverted
               End If
             End If
@@ -2146,7 +2170,7 @@ Contains
             & Trim(T%atom(i)%tag)==Trim(T%species(isp)%component%tag(j))) Then
             Write (iunit,'(a,2x,3f20.12)') Trim(T%atom(i)%tag), T%atom(i)%r
               If (T%species(isp)%change_content .And. T%both_surfaces) Then
-                T%inverted(:)=2.0_wp*T%slab_centre(:)-T%atom(i)%r(:)
+                Call place_at_opposite_surface(T, i)
                 Write (iunit,'(a,2x,3f20.12)') Trim(T%atom(i)%tag), T%inverted
               End If
           End If
@@ -2210,7 +2234,7 @@ Contains
                                                         & simulation_data%dft%magnetization(k)%value 
                     loop=.False.
                     If (T%species(isp)%change_content .And. T%both_surfaces) Then
-                      T%inverted(:)=2.0_wp*T%slab_centre(:)-T%atom(i)%r(:)
+                      Call place_at_opposite_surface(T, i)
                       Write (iunit,'(a,2x,3f20.12,4x,a,f5.2)') Trim(atom_tag), T%inverted, 'spin=', &
                                                         & simulation_data%dft%magnetization(k)%value 
                     End If
@@ -2281,7 +2305,7 @@ Contains
             & Trim(T%atom(i)%tag)==Trim(T%species(isp)%component%tag(j))) Then
               Write (iunit,'(a,2x,3f12.6)') Trim(T%atom(i)%tag), T%atom(i)%r
               If (T%species(isp)%change_content .And. T%both_surfaces) Then
-                T%inverted(:)=2.0_wp*T%slab_centre(:)-T%atom(i)%r(:)
+                Call place_at_opposite_surface(T, i)
                 Write (iunit,'(a,2x,3f12.6)') Trim(T%atom(i)%tag), T%inverted
               End If
           End If
@@ -2367,7 +2391,7 @@ Contains
               EndIf
               Write (iunit, '(3f16.8,3x,i3,5x,a2)') T%atom(i)%r, ntot, T%atom(i)%element
               If (T%species(isp)%change_content .And. T%both_surfaces) Then
-                T%inverted(:)=2.0_wp*T%slab_centre(:)-T%atom(i)%r(:)
+                Call place_at_opposite_surface(T, i)
                 Write (iunit, '(3f16.8,3x,i3,5x,a2)') T%inverted, ntot, T%atom(i)%element
               End If
             End If
@@ -2423,7 +2447,7 @@ Contains
             & Trim(T%atom(i)%tag)==Trim(T%species(isp)%component%tag(j))) Then
               Write (iunit,'(a,2x,3f12.6)') Trim(T%atom(i)%element), T%atom(i)%r
               If (T%species(isp)%change_content .And. T%both_surfaces) Then
-                T%inverted(:)=2.0_wp*T%slab_centre(:)-T%atom(i)%r(:)
+                Call place_at_opposite_surface(T, i)
                 Write (iunit,'(a,2x,3f12.6)') Trim(T%atom(i)%element), T%inverted
               End If
           End If
@@ -2601,6 +2625,119 @@ Contains
 
   End Subroutine define_repeated_model
 
+  Subroutine surface_shift(stoich_data, model_data)
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    ! Subroutine to find the surface shift from the topmost and lowest atoms of
+    ! the electrode model
+    !
+    ! author    - i.scivetti March 2026
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    Type(stoich_type),   Intent(In   )  :: stoich_data
+    Type(model_type),    Intent(InOut) :: model_data
+
+    Logical          :: flag
+    Integer(Kind=wi) :: i, j, k, indx
+    Real(Kind=wp)    :: min_dist, max_dist
+    Real(Kind=wp)    :: dist
+    Real(Kind=wp)    :: r(3), normal(3)
+    Real(Kind=wp)    :: topmost(3), lowest(3)
+    Character(Len=8)   :: tag_top, tag_low 
+    Character(Len=256) :: messages(6)
+
+    If (Trim(model_data%normal_vector%type)=='c3') Then
+      indx=3
+    ElseIf (Trim(model_data%normal_vector%type)=='c2') Then
+      indx=2
+    ElseIf (Trim(model_data%normal_vector%type)=='c1') Then
+      indx=1
+    End If
+
+    r(:)=model_data%input%cell(indx,:)
+    Call normal_along_vector(r,normal)
+    
+    ! Find the topmost with the largest component along the normal vector to the surface 
+    max_dist=-Huge(1.0_wp)
+    Do i = 1, model_data%input%num_atoms
+      flag=.True.
+      j=1 
+      Do While (j <= stoich_data%num_species%value .And. flag)
+         If (Trim(stoich_data%species(j)%topology)=='crystal') Then
+           k=1
+           Do While (k <= stoich_data%species(j)%num_components .And. flag)
+             If (Trim(model_data%input%atom(i)%tag) == Trim(stoich_data%species(j)%component%tag(k))) Then
+               r(:)=model_data%input%atom(i)%r(:)
+               dist=Dot_product(r,normal)
+               If (dist > max_dist) Then
+                 max_dist = dist
+                 topmost=r
+                 tag_top=model_data%input%atom(i)%tag
+               End If
+               flag=.False.
+             End If
+             k=k+1
+           End Do
+         End If
+        j=j+1
+      End Do    
+    End Do
+    
+    ! Find the topmost with the largest component along the normal vector to the surface 
+    min_dist=Huge(1.0_wp)
+    Do i = 1, model_data%input%num_atoms
+      flag=.True.
+      j=1 
+      Do While (j <= stoich_data%num_species%value .And. flag)
+         If (Trim(stoich_data%species(j)%topology)=='crystal') Then
+           k=1
+           Do While (k <= stoich_data%species(j)%num_components .And. flag)
+             If (Trim(model_data%input%atom(i)%tag) == Trim(stoich_data%species(j)%component%tag(k))) Then
+               r(:)=model_data%input%atom(i)%r(:)
+               dist=Dot_product(r,normal)
+               If (dist < min_dist) Then
+                 min_dist = dist
+                 lowest=r
+                 tag_low=model_data%input%atom(i)%tag
+               End If
+               flag=.False.
+             End If
+             k=k+1
+           End Do
+         End If
+        j=j+1
+      End Do    
+    End Do    
+    
+    model_data%sample%surface_shift=topmost-lowest
+    model_data%sample%surface_shift(indx)=0.0_wp
+    
+    If (Trim(tag_top) /= Trim(tag_low)) Then
+         Write (messages(1),'(1x,a)') ' '
+         Write (messages(2),'(1x,a)') '*********************************************************************************'
+         Write (messages(3),'(1x,a)') '*** WARNING: the user should corroborate if both sides of the electrode      ***'
+         Write (messages(4),'(1x,a)') '*** model are equivalent. Adding species at both sides might not be correct, ***'
+         Write (messages(5),'(1x,a)') '*** in which case the "both_surfaces" directive should be set to .False.     ***'
+         Write (messages(6),'(1x,a)') '********************************************************************************'
+         Call info(messages, 6)      
+    End If
+    
+  End Subroutine surface_shift  
+  
+  Subroutine place_at_opposite_surface(T, i)
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    ! Place an atom at the opposite electrode surface 
+    !
+    ! author    - i.scivetti March 2026
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!  
+    Type(sample_type), Intent(InOut) :: T
+    Integer(Kind=wi),  Intent(In   ) :: i
+
+    Real(Kind=wp)    :: l(3), dist
+
+    l=T%atom(i)%r-T%slab_centre
+    dist=Dot_product(l,T%normal)
+    T%inverted=T%atom(i)%r-2.0_wp*dist*T%normal+T%surface_shift
+    
+  End Subroutine place_at_opposite_surface
 
   Subroutine insert_species(process, stoich_data, model_data)
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -2612,8 +2749,8 @@ Contains
     Type(stoich_type),   Intent(In   ) :: stoich_data
     Type(model_type),    Intent(InOut) :: model_data
 
-    Logical :: loop
-    Integer(Kind=wi) :: i, j, index
+    Logical :: flag
+    Integer(Kind=wi) :: i, j, index, loop(3)
     Real(Kind=wp)    :: min_diff, diff, length
 
     Do i=1, model_data%types_species  
@@ -2644,12 +2781,21 @@ Contains
       If (Trim(model_data%normal_vector%type)=='c3') Then
         index=3
         length=model_data%input%cell_length(3)
+        loop(1)=1
+        loop(2)=2
+        loop(3)=3        
       ElseIf (Trim(model_data%normal_vector%type)=='c2') Then
         index=2
         length=model_data%input%cell_length(2)
+        loop(1)=1
+        loop(2)=3
+        loop(3)=2      
       ElseIf (Trim(model_data%normal_vector%type)=='c1') Then
         index=1
         length=model_data%input%cell_length(1)
+        loop(1)=2
+        loop(2)=3
+        loop(3)=1      
       End If
       
       min_diff=Huge(1.0_wp)
@@ -2663,18 +2809,18 @@ Contains
     End If
 
     j=1
-    loop=.True.
-    Do While (loop)
-      loop=.False.
+    flag=.True.
+    Do While (flag)
+      flag=.False.
       Do i=1, model_data%types_species 
         If (model_data%input%species(i)%change_content) Then
            If (j<= model_data%input%species(i)%D_num) Then  
-              loop=.True.
+              flag=.True.
               If (Trim(process)=='intercalation') Then 
                 Call fitting_species_intercalation(model_data%input, model_data%npoints,&
                                   & i, j, model_data%distance_cutoff, model_data%rotate_species%stat)
               ElseIf (Trim(process)=='electrodeposition') Then
-                Call fitting_species_electrodeposition(model_data%input, model_data%scan, model_data%npoints, &
+                Call fitting_species_electrodeposition(model_data%input, loop, model_data%scan, model_data%npoints, &
                                   & i, j, model_data%distance_cutoff, model_data%rotate_species%stat)
               End If
            End If
@@ -2685,13 +2831,14 @@ Contains
 
   End Subroutine insert_species 
 
-  Subroutine fitting_species_electrodeposition(T, scan, npoints, isp, junit, distance_cutoff, rotate)
+  Subroutine fitting_species_electrodeposition(T, loop, scan, npoints, isp, junit, distance_cutoff, rotate)
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     ! Subroutine to fit species over the input electrode surface
     !
     ! author    - i.scivetti Jan 2021
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     Type(sample_type),  Intent(InOut) :: T
+    Integer(Kind=wi),   Intent(In   ) :: loop(3)
     Integer(Kind=wi),   Intent(InOut) :: scan(3)
     Integer(Kind=wi),   Intent(InOut) :: npoints(3)
     Integer(Kind=wi),   Intent(In   ) :: isp, junit
@@ -2709,9 +2856,9 @@ Contains
     nofit=.True.
     ic=scan
 
-    Do While (ic(3) < npoints(3) .And. nofit)
-      Do While (ic(2) < npoints(2) .And. nofit)
-        Do While (ic(1) < npoints(1) .And. nofit)
+    Do While (ic(loop(3)) < npoints(loop(3)) .And. nofit)
+      Do While (ic(loop(2)) < npoints(loop(2)) .And. nofit)
+        Do While (ic(loop(1)) < npoints(loop(1)) .And. nofit)
           Do l=1,3
             centre(l)=(ic(l)-1.0_wp)/(npoints(l))
           End Do
@@ -2769,16 +2916,16 @@ Contains
             T%num_atoms_extra=T%num_atoms_extra+T%species(isp)%atoms_per_species
             T%species(isp)%num_extra=T%species(isp)%num_extra+1
           End If
-          ic(1)=ic(1)+1
+          ic(loop(1))=ic(loop(1))+1
         End Do
         If (nofit) then
-          ic(1)=1
-          ic(2)=ic(2)+1
+          ic(loop(1))=1
+          ic(loop(2))=ic(loop(2))+1
         End If
       End Do
         If (nofit) then
-          ic(2)=1
-          ic(3)=ic(3)+1
+          ic(loop(2))=1
+          ic(loop(3))=ic(loop(3))+1
         End If
     End Do
 
@@ -2789,7 +2936,8 @@ Contains
                                T%species(isp)%D_num, ') for species "', Trim(T%species(isp)%tag), '"'
       Write (messages(2),'(a)') 'This is probably due to:'
       Write (messages(3),'(a)') '1) an incorrect geometry for the input model. Either the surface area is not large enough to&
-                              & accommodate the required species or there is not enough vacuum region.'
+                              & accommodate the required species or there is not enough vacuum region. In casde of the latter,&
+                              & check the value of "deposition_level" if defined.'
       If (distance_cutoff%fread) Then
         Write (messages(4),'(a,f6.2,a)') '2) a rather large value for the cutoff distance between species, set to ',&
                                        & distance_cutoff%value, ' Angstrom.&
@@ -3405,9 +3553,7 @@ Contains
     Integer(Kind=wi) :: i, indx
     Real(Kind=wp)    :: min_dist
     Real(Kind=wp)    :: dist
-    Real(Kind=wp)    :: r(3), shift(3), normal(3), level(3)
-
-    Character(Len=256) :: message
+    Real(Kind=wp)    :: r(3), shift(3), normal(3)
 
     min_dist=Huge(1.0_wp)
     normal=0.0_wp
@@ -3456,22 +3602,49 @@ Contains
       End Do
 
       ! Shift deposition_level
-      level=0.0_wp
       model_data%deposition_level%value=model_data%deposition_level%value-shift(indx)
-      level(indx)=model_data%deposition_level%value
-      r(:)=model_data%input%cell(indx,:)
-      If ( Abs(model_data%deposition_level%value) >= norm2(r) .Or. Dot_product(level,normal) < 0.0_wp ) Then
-         Write (message, '(1x,a)') '***ERROR: innapropriate value of "deposition_level" for the input system.&
-                                  & Please check model and simulation box.'
-         Call error_stop(message)      
-      End If 
     End If
     
   End Subroutine shift_structure
+
+  Subroutine check_deposition_level(model_data)
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    ! Check the value set for the deposition level againts the cell dimensions
+    !
+    ! author    - i.scivetti March 2026
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!  
+    Type(model_type),    Intent(InOut) :: model_data
+
+    Integer(Kind=wi) :: indx
+    Real(Kind=wp)    :: r(3), normal(3), level(3)
+
+    Character(Len=256) :: message
+    
+    If (Trim(model_data%normal_vector%type)=='c3') Then
+      indx=3
+    ElseIf (Trim(model_data%normal_vector%type)=='c2') Then
+      indx=2
+    ElseIf (Trim(model_data%normal_vector%type)=='c1') Then
+      indx=1
+    End If
+
+    r(:)=model_data%input%cell(indx,:)
+    Call normal_along_vector(r,normal)
+
+    level=0.0_wp
+    level(indx)=model_data%deposition_level%value
+    r(:)=model_data%input%cell(indx,:)
+    If (Abs(model_data%deposition_level%value) >= norm2(r) .Or. Dot_product(level,normal) < 0.0_wp ) Then
+       Write (message, '(1x,a)') '***ERROR: innapropriate value of "deposition_level" for the input system.&
+                                & Please check model and simulation box.'
+       Call error_stop(message)      
+    End If 
+  
+  End Subroutine check_deposition_level
   
   Subroutine set_deposition_level(model_data)
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    ! Subroutine to shift the set of atomic coordinates to the origin 
+    ! Subroutine to set the deposition level
     !
     ! author    - i.scivetti March 2021
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -3506,6 +3679,8 @@ Contains
       End If 
     End Do
     model_data%deposition_level%value=atom(indx)
+    
+    print*, model_data%deposition_level%value
     
   End Subroutine set_deposition_level
   
@@ -4528,30 +4703,6 @@ Contains
     End Do
 
   End Subroutine check_PBC 
-
-  Subroutine check_orthorhombic_cell(A, flag)
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    ! Subroutine to check if the simulation cell 'A' is orthorhombic or not. 
-    ! vectors. If A is not orthorhombic, flag will be set to False
-    !
-    ! author    - i.scivetti Aug 2022
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    Real(Kind=wp), Intent(In   )  :: A(3,3)
-    Logical,       Intent(  Out)  :: flag
-   
-    Integer(Kind=wi) :: i, j
-
-    i=1
-    flag=.True.
-    Do i = 1, 2
-     Do j = i+1, 3
-       If (Abs(Dot_product(A(i,:), A(j,:)))>epsilon(1.0_wp)) Then
-         flag=.False.      
-       End If        
-     End Do
-    End Do 
-
-  End Subroutine check_orthorhombic_cell
 
   Subroutine about_cell(A,invA,length)
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

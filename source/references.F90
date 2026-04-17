@@ -2,11 +2,10 @@
 ! Module containing bibliography information of the implemented:
 ! - XC approximations 
 ! - vdW corrections
-! - solvation methods
 ! 
 ! References to other websites are also provided
 !
-! Copyright: 2022-2024 Ada Lovelace Centre (ALC)
+! Copyright: 2022-2026 Ada Lovelace Centre (ALC)
 !             Scientific Computing Department (SCD)
 !             The Science and Technology Facilities Council (STFC)
 !
@@ -72,16 +71,6 @@ Module references
   Character(Len=256), Parameter, Public  :: bib_scan=     '[J. Sun et al. Phys. Rev. Lett. 115, 036402 (2015)]' 
   Character(Len=256), Parameter, Public  :: bib_rpw86pbe= '[E. D. Murray et al. J. Chem. Theory Comput. (2009), 5, 10,&
                                                           & 2754-2762]'
-
-  ! Solvation
-  Character(Len=256), Parameter, Public  :: bib_fg= '[D. A. Scherlis et al. J. Chem. Phys. 124, , 074103 (2006).]'
-  Character(Len=256), Parameter, Public  :: bib_fisicaro= '[G. Fisicaro et al. J. Chem. Theory Comput. 13, 3829−3845 (2017)]'
-  Character(Len=256), Parameter, Public  :: bib_andreussi= '[O. Andreussi et a. J. Chem. Phys. 136, 064102 (2012)]'
-
-  ! Electrolyte
-  Character(Len=256), Parameter, Public  :: bib_pbeq_onetep= '[J. Dziedzic et al. J. Phys. Chem. C (2020), 124, 14, 7860-7872]'
-  Character(Len=256), Parameter, Public  :: bib_neutral_onetep= '[A. Bhandari al. J. Chem. Phys. (2020), 153, 124101]'
-  Character(Len=256), Parameter, Public  :: bib_gcdft_onetep= '[A. Bhandari al. J. Chem. Phys. (2021), 155, 024114]'
 
   ! Other websites                                
   Character(Len=256), Parameter, Public  :: web_D3BJ=    '[https://www.chemie.uni-bonn.de/pctc/mulliken-center/software/&

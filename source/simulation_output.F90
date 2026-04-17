@@ -2,7 +2,7 @@
 ! Module that automatically sets up input files for geometry relaxation 
 ! and molecular dynamics of the generated atomistic models 
 !
-! Copyright: 2022-2024 Ada Lovelace Centre (ALC)
+! Copyright: 2022-2026 Ada Lovelace Centre (ALC)
 !             Scientific Computing Department (SCD)
 !             The Science and Technology Facilities Council (STFC)
 !
@@ -27,8 +27,6 @@ Module simulation_output
                                advise_cp2k
   Use code_onetep,      Only : define_onetep_settings,&
                                print_onetep_settings, &
-                               summary_solvation_onetep, &
-                               summary_electrolyte_onetep, &
                                advise_onetep
   Use code_vasp,        Only : define_vasp_settings,&
                                print_vasp_settings,&
@@ -222,30 +220,6 @@ Contains
                                & for "simulation_type". See manual for syntax.'
       Call error_stop(message)  
     End If 
-
-    ! Electrolyte
-    If (simulation_data%electrolyte%info%stat) Then
-      If (.Not. simulation_data%solvation%info%stat) Then
-        Write (messages(1),'(2(1x,a))') Trim(error_block),&
-                                    & 'Definition of the &electrolyte block requires the definition of the&
-                                    & &solvation block.'
-        Call info(messages, 1)
-        Call error_stop(' ')
-      End If
-    End If
-    
-    
-    ! Solvation checks 
-    If (simulation_data%solvation%info%stat) Then
-      If(Trim(simulation_data%code_format) /= 'onetep') Then      
-        Write (messages(1),'(2(1x,a))') Trim(error_block),&
-                                    & 'To date, settings for implicit solvent simulations are only implemented for ONETEP.&
-                                    & Either set option "onetep" for the "output_model_format" directive or remove&
-                                    & the &solvation block'
-        Call info(messages, 1)
-        Call error_stop(' ')
-      End If
-    End If
 
     ! Extra directives
     If (simulation_data%extra_info%stat) Then
@@ -770,20 +744,6 @@ Contains
       End If            
     End If 
 
-    ! GC-DFT functionality
-    If (simulation_data%dft%gc%activate%stat) Then
-      If (Trim(simulation_data%code_format) /= 'onetep' ) Then
-        Write (message,'(1x,a,1x,3a)')  Trim(error_dft), 'GC-DFT simulations are not possible for the requested code format "', &
-                & Trim(simulation_data%code_format), '". Please remove the &gcdft sub-block.'
-        Call error_stop(message)
-      End If
-      If (Trim(simulation_data%process)/= 'electrodeposition') Then
-        Write (message,'(1x,a,1x,3a)')  Trim(error_dft), 'GC-DFT simulations are only possible for surfaces systems and&
-                                        & electrodeposition processes.'
-        Call error_stop(message)
-      End If        
-    End If        
-
     ! precision (only compulsory for VASP)
     If (simulation_data%dft%precision%fread) Then
       If (simulation_data%dft%precision%fail) Then
@@ -1230,8 +1190,8 @@ Contains
         Write (message,'(2(1x,a))') Trim(error_motion), 'Wrong (or missing) settings for "ion_steps" directive'
         Call error_stop(message)
       Else
-        If (simulation_data%motion%ion_steps%value <= 0) Then
-          Write (message,'(1x,2a)') Trim(error_motion), ' Number of "ion_step" must be larger than 0'
+        If (simulation_data%motion%ion_steps%value < 0) Then
+          Write (message,'(1x,2a)') Trim(error_motion), ' Number of "ion_step" cannot be negative'
           Call error_stop(message)
         End If
       End If
@@ -1770,11 +1730,6 @@ Contains
     End If
 
     Call info(' === DFT settings:', 1)
-    ! Grand Canonical
-    If (simulation_data%dft%gc%activate%fread) Then
-       Write (messages(1),'(1x,a)')  '- Grand-Canonical approximation for electrochemical conditions'
-       Call info(messages, 1)
-    End If        
 
     ! GAPW or GPW?
     If (Trim(simulation_data%code_format)=='cp2k') Then
@@ -2074,26 +2029,9 @@ Contains
     End If
     Call info(messages,1)
 
-    If (simulation_data%solvation%info%stat) Then
-      If (simulation_data%electrolyte%info%stat) Then
-        Write (messages(1),'(1x,a)')  '- implicit solvent with electrolyte is included (see below for details)'
-      Else
-        Write (messages(1),'(1x,a)')  '- implicit solvent is included (see below for details)'
-      End If
-      Call info(messages, 1)
-    End If
-
     ! Print summary
     Call summary_dft_settings(simulation_data)
     Call summary_motion_settings(simulation_data)
-    If (simulation_data%solvation%info%stat) Then
-       Call info(' === Implicit solvent settings:', 1)
-       Call summary_solvation_onetep(simulation_data)
-       If (simulation_data%electrolyte%info%stat) Then
-         Call info(' === Electrolyte settings:', 1)
-         Call summary_electrolyte_onetep(simulation_data)
-       End If 
-    End If
 
   End Subroutine summary_simulation_settings
 

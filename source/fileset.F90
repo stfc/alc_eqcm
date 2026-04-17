@@ -1,7 +1,7 @@
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! 
 ! Module for input/output files and related subroutines
 !
-! Copyright: 2022-2024 Ada Lovelace Centre (ALC)
+! Copyright: 2022-2026 Ada Lovelace Centre (ALC)
 !            Scientific Computing Department (SCD)
 !            The Science and Technology Facilities Council (STFC)
 !
@@ -225,9 +225,9 @@ Contains
     Write (header(3), fmt1)  "#  A software that processes Electrochemical Quartz Crystal Microbalance #"
     Write (header(4), fmt1)  "#  (EQCM) data to compute stoichiometries and generate atomistic models  #"
     Write (header(5), fmt3)  "#  version:  ", Trim(code_VERSION), Repeat(' ',57),                     "#"
-    Write (header(6), fmt3)  "#  release:  ", Trim(date_RELEASE), Repeat(' ',51),                     "#"
+    Write (header(6), fmt3)  "#  release:  ", Trim(date_RELEASE), Repeat(' ',50),                     "#"
     Write (header(7), fmt1)  "#                                                                        #"
-    Write (header(8), fmt1)  "#  Copyright:  2022-2024  Ada Lovelace Centre (ALC)                      #"
+    Write (header(8), fmt1)  "#  Copyright:  2022-2026  Ada Lovelace Centre (ALC)                      #"
     Write (header(9), fmt1)  "#              Scientific Computing Department (SCD)                     #"
     Write (header(10), fmt1) "#              Science and Technology Facilities Councils (STFC)         #"
     Write (header(11), fmt1) "#                                                                        #"
@@ -285,11 +285,6 @@ Contains
     Write (appex(5), fmt1)  "#     Computational Materials Science 218, 111968, (2023),&
                                    & https://doi.org/10.1016/j.commatsci.2022.111968"
     Call info(appex, 5)
-
-    Write (appex(1), fmt1)  "#" 
-    Write (appex(2), fmt1)  '#  Both references are provided in bibtex format within the "biblio-references"&
-                            & folder in the root directory.'
-    Call info(appex, 2)
 
     Close(files(FILE_OUT_EQCM)%unit_no)    
 

@@ -1,7 +1,7 @@
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! Module that defines simulation type and procedure
 !
-! Copyright: 2022-2024 Ada Lovelace Centre (ALC)
+! Copyright: 2022-2026 Ada Lovelace Centre (ALC)
 !             Scientific Computing Department (SCD)
 !             The Science and Technology Facilities Council (STFC)
 !
@@ -109,14 +109,6 @@ Module simulation_setup
     Real(Kind=wp)     :: value
   End Type species_list
 
-  ! Type for GC-DFT
-  Type :: type_gcdft 
-    Type(in_logic)  ::  activate     
-    Type(in_param)  ::  reference_potential    
-    Type(in_param)  ::  electrode_potential
-    Type(in_scalar) ::  electron_threshold    
-  End Type
- 
   ! Type for boltzmann_ions 
   Type :: boltzmann_ions
     Character(Len=8)  :: tag
@@ -199,9 +191,6 @@ Module simulation_setup
     ! PAW for onetep
     Logical :: onetep_paw
     
-    ! GC-DFT
-    Type(type_gcdft) :: gc
-
   End Type
 
   ! Type for motion settings
@@ -239,56 +228,6 @@ Module simulation_setup
     Type(in_logic)   :: mass_info
     Type(species_list), Allocatable :: mass(:) 
   End Type
-
-  ! Type for solvation 
-  Type :: solvation_onetep
-    Type(in_logic)    :: info
-    Type(in_logic)    :: in_vacuum_first 
-    Type(in_string)   :: cavity_model
-    Type(in_string)   :: dielectric_function
-    Type(in_scalar)   :: density_threshold
-    Type(in_scalar)   :: density_min_threshold
-    Type(in_scalar)   :: density_max_threshold
-    Type(in_scalar)   :: beta 
-    Type(in_scalar)   :: permittivity_bulk
-    Character(Len=256) :: bib_epsilon
-    Type(in_logic)    :: soft_radii_info  
-    Type(in_scalar)   :: soft_sphere_scale    
-    Type(in_scalar)   :: soft_sphere_delta    
-    Type(species_list), Allocatable :: soft_radii(:)
-    !Apolar terms
-    Type(in_string)   :: apolar_terms
-    Type(in_string)   :: sasa_definition
-    Type(in_scalar)   :: apolar_scaling 
-    Type(in_param)    :: solvent_pressure      
-    Type(in_param_array) :: surf_tension 
-    Type(in_param)    :: smear_ion_width 
-    Logical           :: both_surfaces
-  End Type solvation_onetep
-
-  ! Type for Poisson-Boltzmann 
-  Type :: electrolyte
-    Type(in_logic)    :: info
-    Type(in_string)   :: solver
-    Type(in_string)   :: neutral_scheme 
-    Type(in_string)   :: steric_potential 
-    Type(in_param)    :: boltzmann_temp
-    Type(in_param)    :: steric_isodensity 
-    Type(in_param)    :: steric_smearing
-    Type(in_param)    :: capping 
-    ! Boltzman ions
-    Logical           :: set_necs_shift
-    Type(in_logic)    :: boltzmann_ions_info
-    Integer           :: number_boltzmann_ions
-    Type(in_logic)    :: solvent_radii_info
-    Type(species_list), Allocatable :: solvent_radii(:)
-    Type(boltzmann_ions) :: boltzmann_ions(max_number_boltzmann_ions)
-  End Type electrolyte
-
-  ! Type for multi-grid 
-  Type :: multigrid
-    Type(in_logic)    :: info
-  End Type multigrid
 
   ! Type for the modelling related variables 
   Type, Public :: simul_type
@@ -334,17 +273,10 @@ Module simulation_setup
     ! Set directives
     Type(type_extra),  Public :: set_directives
 
-    ! Solvation
-    Type(solvation_onetep), Public :: solvation
-    ! Poisson-Boltzmann 
-    Type(electrolyte), Public :: electrolyte 
-
   Contains
     Private
     Procedure, Public  :: init_input_dft_variables    =>  allocate_input_dft_variables
     Procedure, Public  :: init_input_motion_variables =>  allocate_input_motion_variables
-    Procedure, Public  :: init_input_solvation_variables =>  allocate_input_solvation_variables
-    Procedure, Public  :: init_input_electrolyte_variables =>  allocate_input_electrolyte_variables
     Final              :: cleanup
 
   End Type simul_type
@@ -410,56 +342,6 @@ Contains
 
   End Subroutine allocate_input_motion_variables
 
-  Subroutine allocate_input_solvation_variables(T)
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    ! Allocate essential solvation input variable 
-    !
-    ! author    - i.scivetti August 2022
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    Class(simul_type), Intent(InOut)  :: T
-
-    Integer(Kind=wi)    :: fail(3)
-    Character(Len=256)  :: message
-
-    Allocate(T%solvation%surf_tension%value(1),    Stat=fail(1))
-    Allocate(T%solvation%surf_tension%units(2),    Stat=fail(2))
-    Allocate(T%solvation%soft_radii(T%total_tags), Stat=fail(3))  
-
-    If (Any(fail > 0)) Then
-      Write (message,'(1x,1a)') '***ERROR: Allocation problems of "solvation" variables to build input files&
-                               & for simulations'
-      Call error_stop(message)
-    End If
-
-    !Set to False just in case
-    T%solvation%soft_radii_info%stat=.False.
-
-  End Subroutine allocate_input_solvation_variables
-
-  Subroutine allocate_input_electrolyte_variables(T)
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    ! Allocate essential elctrolyte input variable 
-    !
-    ! author    - i.scivetti September 2022
-    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    Class(simul_type), Intent(InOut)  :: T
-
-    Integer(Kind=wi)    :: fail(1)
-    Character(Len=256)  :: message
-
-    Allocate(T%electrolyte%solvent_radii(T%total_tags), Stat=fail(1))  
-
-    If (Any(fail > 0)) Then
-      Write (message,'(1x,1a)') '***ERROR: Allocation problems of "electrolyte" variables to build input files&
-                               & for simulations'
-      Call error_stop(message)
-    End If
-
-    !Set to False just in case
-    T%electrolyte%solvent_radii_info%stat=.False.
-
-  End Subroutine allocate_input_electrolyte_variables
-
   Subroutine cleanup(T)
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     ! Deallocate variables
@@ -499,10 +381,6 @@ Contains
 
     If (Allocated(T%dft%ngwf)) Then
       Deallocate(T%dft%ngwf)
-    End If
-
-    If (Allocated(T%solvation%soft_radii)) Then
-      Deallocate(T%solvation%soft_radii)
     End If
 
   End Subroutine cleanup

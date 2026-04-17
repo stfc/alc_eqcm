@@ -1,7 +1,7 @@
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! Module containing constants and parameters for computation and reference
 !
-! Copyright: 2022-2024 Ada Lovelace Centre (ALC)
+! Copyright: 2022-2026 Ada Lovelace Centre (ALC)
 !             Scientific Computing Department (SCD)
 !             The Science and Technology Facilities Council (STFC)
 !
@@ -16,8 +16,8 @@ Module constants
 
   ! Code reference 
   Character(Len=16), Parameter, Public  :: code_name    = "ALC_EQCM" 
-  Character(Len=16), Parameter, Public  :: code_VERSION = "1.4"
-  Character(Len=16), Parameter, Public  :: date_RELEASE = "Aug  2024"
+  Character(Len=16), Parameter, Public  :: code_VERSION = "1.5"
+  Character(Len=16), Parameter, Public  :: date_RELEASE = "April 2026"
 
   ! FIXED PARAMETERS
   Real(Kind=wp), Parameter, Public  :: pi    = 3.14159265358979312e0_wp 

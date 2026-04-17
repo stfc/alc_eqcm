@@ -3,7 +3,7 @@
 ! with VASP. This module also warns the user about aspects to take
 ! into consideration when performing simulations
 !
-! Copyright: 2022-2024 Ada Lovelace Centre (ALC)
+! Copyright: 2022-2026 Ada Lovelace Centre (ALC)
 !             Scientific Computing Department (SCD)
 !             The Science and Technology Facilities Council (STFC)
 !
@@ -172,9 +172,6 @@ Contains
 
     error_dft    = '***ERROR in &dft_settings (file '//Trim(files(FILE_SET_EQCM)%filename)//'):'
     
-    ! latest version of the code
-    simulation_data%code_version= '5.4.1' 
-
     ! Check XC_version
     If (Trim(simulation_data%dft%xc_version%type) /= 'ca'     .And.&
       Trim(simulation_data%dft%xc_version%type)   /= 'hl'     .And.&
@@ -909,13 +906,13 @@ Contains
            mag_ini(i)=simulation_data%dft%magnetization(j)%value
            Write (nel,*) list_number(i)
            Write (mag,'(f5.2)') simulation_data%dft%magnetization(j)%value
-           mag_list(i)= Trim(nel)//'*'//Adjustl(Trim(mag))//'  '
+           mag_list(i)= Trim(nel)//'*'//Trim(Adjustl(mag))//'  '
            loop=.False.
          End If
          j=j+1
        End Do
      End Do
-     Write (mag_final,'(*(1x,a10))') (Adjustl(Trim(mag_list(i))), i=1, net_elements)
+     Write (mag_final,'(*(1x,a10))') (Trim(Adjustl(mag_list(i))), i=1, net_elements)
      Write (message,'(2a)') 'MAGMOM = ', Trim(mag_final)
      Call record_directive(iunit, message, 'MAGMOM', simulation_data%set_directives%array(ic), ic)
      Write (iunit,'(a)') ' '
@@ -1267,9 +1264,6 @@ Contains
 
     error_motion = '***ERROR in &motion_settings (file '//Trim(files(FILE_SET_EQCM)%filename)//'):'
 
-    ! latest version of the code
-    simulation_data%code_version= '5.4.1' 
-
     ! Ions related settings
     !!!!!!!!!!!!!!!!!!!!!!!
     !Relaxation method
@@ -1493,7 +1487,7 @@ Contains
            j=j+1
          End Do
        End Do
-       Write (mass_final,'(*(1x,a10))') (Adjustl(Trim(mass_list(i))), i=1, net_elements)
+       Write (mass_final,'(*(1x,a10))') (Trim(Adjustl(mass_list(i))), i=1, net_elements)
        Write (iunit,'(a)') '# ==== Atomic masses' 
        Write (message,'(2a)') 'POMASS = ', Trim(mass_final)
        Call record_directive(iunit, message, 'POMASS', simulation_data%set_directives%array(ic), ic)

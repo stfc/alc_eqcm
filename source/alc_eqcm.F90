@@ -9,7 +9,7 @@
 ! generated modeles together with scripts for computation 
 ! in High Performance Computing facilities.
 !
-! Copyright:  2022-2024 Ada Lovelace Centre (ALC)
+! Copyright:  2022-2026 Ada Lovelace Centre (ALC)
 !             Scientific Computing Department (SCD)
 !             The Science and Technology Facilities Council (STFC, UKRI)  
 !               

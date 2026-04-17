@@ -15,7 +15,7 @@
 
     if [ $genfile = "OUT_EQCM" ] ;then
       nl=$(wc -l ${genfile} | awk '{ print $1 }')
-      nappex=26
+      nappex=21
       nbanner=20
       nlow="$((nl - nappex))"
       ntop="$((nlow - nbanner))"
@@ -104,7 +104,7 @@ else
   status="PASSED"
 fi
 
-## If the jobs for has executed, it is time to check the output with reference data
+## If the jobs have executed, it is time to check the output with reference data
 if [ "$status" = "PASSED" ]; then
 
   echo "*** Check for generated files against reference data ***"  | tee -a diagnose.log
