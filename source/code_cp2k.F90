@@ -3,7 +3,7 @@
 ! with CP2K. This module also warns the user about aspects to take
 ! into consideration when performing simulations
 !
-! Copyright: 2022-2024 Ada Lovelace Centre (ALC)
+! Copyright: 2022-2026 Ada Lovelace Centre (ALC)
 !             Scientific Computing Department (SCD)
 !             The Science and Technology Facilities Council (STFC)
 !
@@ -98,13 +98,17 @@ Contains
     Write (iunit,'(a)') '##### Global definitions'
     Write (iunit,'(a)') '&GLOBAL'
     Write (iunit,'(2x,a)') 'PROJECT   model'
-    If (Trim(simulation_data%simulation%type) == 'md') Then
-      Write (iunit,'(2x,a)') 'RUN_TYPE   MD' 
-    Else If (Trim(simulation_data%simulation%type) == 'relax_geometry') Then
-      If (simulation_data%motion%change_cell_volume%stat .Or. simulation_data%motion%change_cell_shape%stat) Then     
-        Write (iunit,'(2x,a)') 'RUN_TYPE   CELL_OPT'
-      Else    
-        Write (iunit,'(2x,a)') 'RUN_TYPE   GEO_OPT'
+    If (simulation_data%motion%ion_steps%value == 0) Then
+      Write (iunit,'(2x,a)') 'RUN_TYPE   ENERGY_FORCE'
+    Else 
+      If (Trim(simulation_data%simulation%type) == 'md') Then
+        Write (iunit,'(2x,a)') 'RUN_TYPE   MD' 
+      Else If (Trim(simulation_data%simulation%type) == 'relax_geometry') Then
+        If (simulation_data%motion%change_cell_volume%stat .Or. simulation_data%motion%change_cell_shape%stat) Then     
+          Write (iunit,'(2x,a)') 'RUN_TYPE   CELL_OPT'
+        Else    
+          Write (iunit,'(2x,a)') 'RUN_TYPE   GEO_OPT'
+        End If
       End If
     End If
     Write (iunit,'(2x,a)')   'PRINT_LEVEL  LOW' 
@@ -532,9 +536,6 @@ Contains
         End If
         Write (iunit,'(6x,2a,3i3)') 'SCHEME  ', Trim(kpoint_sampling),&
                                  & (simulation_data%dft%kpoints%value(i), i= 1, 3)
-        Write (iunit,'(6x,a)') 'SYMMETRY  TRUE'
-        Write (iunit,'(6x,a)') 'WAVEFUNCTIONS  REAL' 
-        Write (iunit,'(6x,a)') 'FULL_GRID  .TRUE.'
         Write (iunit,'(4x,a)') '&END KPOINTS' 
       End If
     End If
@@ -677,98 +678,100 @@ Contains
     Write (iunit,'(a)')    ' '
     Write (iunit,'(a)') '&END FORCE_EVAL'
 
-    Write (iunit,'(a)')    ' '
-    Write (iunit,'(a)') '#######################'
-    Write (iunit,'(a)') '### IONS directives ###'
-    Write (iunit,'(a)') '#######################'
-    Write (iunit,'(a)') '&MOTION'
-    If (Trim(simulation_data%simulation%type) == 'relax_geometry') Then
-      If (simulation_data%motion%change_cell_volume%stat .Or. &
-        simulation_data%motion%change_cell_shape%stat) Then
-        Write (iunit,'(2x,a)') '  '
-        Write (iunit,'(2x,a)') '#==== Cell and geometry optimization'
-        Write (iunit,'(2x,a)') '&CELL_OPT'
-        Write (iunit,'(4x,a)')        'TYPE   DIRECT_CELL_OPT'
-        Write (iunit,'(4x,a,i4)')     'MAX_ITER ', simulation_data%motion%ion_steps%value
-        Write (iunit,'(4x,2a)')       'OPTIMIZER  ', Trim(simulation_data%motion%relax_method%type)
-        Write (iunit,'(4x,a,e10.3)')  'MAX_FORCE  ', simulation_data%motion%delta_f%value(1)
-        Write (iunit,'(4x,a,9e10.2)') 'EXTERNAL_PRESSURE  ',&
-                                      & simulation_data%motion%pressure%value, 0.0_wp, 0.0_wp,& 
-                                      & 0.0_wp, simulation_data%motion%pressure%value, 0.0_wp,& 
-                                      & 0.0_wp, 0.0_wp, simulation_data%motion%pressure%value 
-        Write (iunit,'(4x,a)')        'PRESSURE_TOLERANCE  1.00E+2'
-        If (.Not. simulation_data%motion%change_cell_shape%stat) Then
-           Write (iunit,'(4x,a)')    'KEEP_ANGLES'
-        End If
-        Write (iunit,'(2x,a)') '&END CELL_OPT'
-      Else
-        Write (iunit,'(2x,a)') '  '
-        Write (iunit,'(2x,a)') '#==== Geometry optimization'
-        Write (iunit,'(2x,a)') '&GEO_OPT'
-        Write (iunit,'(4x,a,i7)')    'MAX_ITER ', simulation_data%motion%ion_steps%value
-        Write (iunit,'(4x,2a)')      'OPTIMIZER  ', Trim(simulation_data%motion%relax_method%type)
-        Write (iunit,'(4x,a,e10.3)') 'MAX_FORCE  ', simulation_data%motion%delta_f%value(1)
-        Write (iunit,'(2x,a)') '&END GEO_OPT'
-      End If
-    ElseIf (Trim(simulation_data%simulation%type) == 'md') Then  
-        Write (iunit,'(2x,a)') '  '
-        Write (iunit,'(2x,a)') '#==== MD settings'
-        Write (iunit,'(2x,a)') '&MD'
-        If (Trim(simulation_data%motion%ensemble%type)=='npt') Then
-          Write (iunit,'(4x,a)')      'ENSEMBLE    NPT_F'
-        Else If (Trim(simulation_data%motion%ensemble%type)=='nph') Then
-          Write (iunit,'(4x,a)')      'ENSEMBLE    NPE_F'
+    If (simulation_data%motion%ion_steps%value /= 0) Then
+      Write (iunit,'(a)')    ' '
+      Write (iunit,'(a)') '#######################'
+      Write (iunit,'(a)') '### IONS directives ###'
+      Write (iunit,'(a)') '#######################'
+      Write (iunit,'(a)') '&MOTION'
+      If (Trim(simulation_data%simulation%type) == 'relax_geometry') Then
+        If (simulation_data%motion%change_cell_volume%stat .Or. &
+          simulation_data%motion%change_cell_shape%stat) Then
+          Write (iunit,'(2x,a)') '  '
+          Write (iunit,'(2x,a)') '#==== Cell and geometry optimization'
+          Write (iunit,'(2x,a)') '&CELL_OPT'
+          Write (iunit,'(4x,a)')        'TYPE   DIRECT_CELL_OPT'
+          Write (iunit,'(4x,a,i4)')     'MAX_ITER ', simulation_data%motion%ion_steps%value
+          Write (iunit,'(4x,2a)')       'OPTIMIZER  ', Trim(simulation_data%motion%relax_method%type)
+          Write (iunit,'(4x,a,e10.3)')  'MAX_FORCE  ', simulation_data%motion%delta_f%value(1)
+          Write (iunit,'(4x,a,9e10.2)') 'EXTERNAL_PRESSURE  ',&
+                                        & simulation_data%motion%pressure%value, 0.0_wp, 0.0_wp,& 
+                                        & 0.0_wp, simulation_data%motion%pressure%value, 0.0_wp,& 
+                                        & 0.0_wp, 0.0_wp, simulation_data%motion%pressure%value 
+          Write (iunit,'(4x,a)')        'PRESSURE_TOLERANCE  1.00E+2'
+          If (.Not. simulation_data%motion%change_cell_shape%stat) Then
+             Write (iunit,'(4x,a)')    'KEEP_ANGLES'
+          End If
+          Write (iunit,'(2x,a)') '&END CELL_OPT'
         Else
-          Write (iunit,'(4x,2a)')     'ENSEMBLE    ', Trim(simulation_data%motion%ensemble%type)
+          Write (iunit,'(2x,a)') '  '
+          Write (iunit,'(2x,a)') '#==== Geometry optimization'
+          Write (iunit,'(2x,a)') '&GEO_OPT'
+          Write (iunit,'(4x,a,i7)')    'MAX_ITER ', simulation_data%motion%ion_steps%value
+          Write (iunit,'(4x,2a)')      'OPTIMIZER  ', Trim(simulation_data%motion%relax_method%type)
+          Write (iunit,'(4x,a,e10.3)') 'MAX_FORCE  ', simulation_data%motion%delta_f%value(1)
+          Write (iunit,'(2x,a)') '&END GEO_OPT'
         End If
-        Write (iunit,'(4x,a,i7)')   'STEPS     ', simulation_data%motion%ion_steps%value
-        Write (iunit,'(4x,a,f7.2)') 'TIMESTEP     ', simulation_data%motion%timestep%value
-        Write (iunit,'(4x,a,f7.2)') 'TEMPERATURE  ', simulation_data%motion%temperature%value
-        If (Trim(simulation_data%motion%ensemble%type) == 'nvt' .Or. &
-           Trim(simulation_data%motion%ensemble%type) == 'npt') Then
-          Write (iunit,'(4x,a)') '&THERMOSTAT'
-          Write (iunit,'(6x,a)') 'REGION  MASSIVE'
-          If (Trim(simulation_data%motion%thermostat%type) == 'nose-hoover') Then
-            Write (iunit,'(6x,2a)') 'TYPE   NOSE'
-            Write (iunit,'(6x,a)') '&NOSE'
-            Write (iunit,'(8x,a)') 'LENGTH   3'
-            Write (iunit,'(8x,a)') 'YOSHIDA  3'
-            Write (iunit,'(8x,a)') 'MTS      2'
-            Write (iunit,'(8x,a,f8.2)') 'TIMECON  ', simulation_data%motion%relax_time_thermostat%value
-            Write (iunit,'(6x,a)') '&END NOSE'
-          ElseIf (Trim(simulation_data%motion%thermostat%type) == 'gle') Then
-            Write (iunit,'(6x,2a)') 'TYPE  GLE'
-            Write (iunit,'(6x,a)') '&GLE'
-            Write (iunit,'(6x,a)') '&END GLE'
-          ElseIf (Trim(simulation_data%motion%thermostat%type) == 'ad_langevin') Then
-            Write (iunit,'(6x,2a)') 'TYPE  D_LANGEVIN'
-            Write (iunit,'(6x,a)') '&AD_LANGEVIN'
-            Write (iunit,'(8x,a,f8.2)') 'TIMECON_LANGEVIN  ', simulation_data%motion%relax_time_thermostat%value
-            Write (iunit,'(6x,a)') '&END AD_LANGEVIN'
-          ElseIf (Trim(simulation_data%motion%thermostat%type) == 'csvr') Then
-            Write (iunit,'(6x,2a)') 'TYPE  CSVR'
-            Write (iunit,'(6x,a)') '&CSVR'
-            Write (iunit,'(8x,a,f8.2)') 'TIMECON  ', simulation_data%motion%relax_time_thermostat%value
-            Write (iunit,'(6x,a)') '&END CSVR'
+      ElseIf (Trim(simulation_data%simulation%type) == 'md') Then  
+          Write (iunit,'(2x,a)') '  '
+          Write (iunit,'(2x,a)') '#==== MD settings'
+          Write (iunit,'(2x,a)') '&MD'
+          If (Trim(simulation_data%motion%ensemble%type)=='npt') Then
+            Write (iunit,'(4x,a)')      'ENSEMBLE    NPT_F'
+          Else If (Trim(simulation_data%motion%ensemble%type)=='nph') Then
+            Write (iunit,'(4x,a)')      'ENSEMBLE    NPE_F'
+          Else
+            Write (iunit,'(4x,2a)')     'ENSEMBLE    ', Trim(simulation_data%motion%ensemble%type)
           End If
-          Write (iunit,'(4x,a)') '&END THERMOSTAT'
-          If (Trim(simulation_data%motion%ensemble%type) == 'npt') Then
-            Write (iunit,'(4x,a)') '&BAROSTAT'
-            Write (iunit,'(6x,a,f8.2)') 'PRESSURE [bar] ', simulation_data%motion%pressure%value
-            Write (iunit,'(6x,a,f10.2)') 'TIMECON  [fs]  ', simulation_data%motion%relax_time_barostat%value
-            Write (iunit,'(4x,a)') '&END BAROSTAT'
+          Write (iunit,'(4x,a,i7)')   'STEPS     ', simulation_data%motion%ion_steps%value
+          Write (iunit,'(4x,a,f7.2)') 'TIMESTEP     ', simulation_data%motion%timestep%value
+          Write (iunit,'(4x,a,f7.2)') 'TEMPERATURE  ', simulation_data%motion%temperature%value
+          If (Trim(simulation_data%motion%ensemble%type) == 'nvt' .Or. &
+             Trim(simulation_data%motion%ensemble%type) == 'npt') Then
+            Write (iunit,'(4x,a)') '&THERMOSTAT'
+            Write (iunit,'(6x,a)') 'REGION  MASSIVE'
+            If (Trim(simulation_data%motion%thermostat%type) == 'nose-hoover') Then
+              Write (iunit,'(6x,2a)') 'TYPE   NOSE'
+              Write (iunit,'(6x,a)') '&NOSE'
+              Write (iunit,'(8x,a)') 'LENGTH   3'
+              Write (iunit,'(8x,a)') 'YOSHIDA  3'
+              Write (iunit,'(8x,a)') 'MTS      2'
+              Write (iunit,'(8x,a,f8.2)') 'TIMECON  ', simulation_data%motion%relax_time_thermostat%value
+              Write (iunit,'(6x,a)') '&END NOSE'
+            ElseIf (Trim(simulation_data%motion%thermostat%type) == 'gle') Then
+              Write (iunit,'(6x,2a)') 'TYPE  GLE'
+              Write (iunit,'(6x,a)') '&GLE'
+              Write (iunit,'(6x,a)') '&END GLE'
+            ElseIf (Trim(simulation_data%motion%thermostat%type) == 'ad_langevin') Then
+              Write (iunit,'(6x,2a)') 'TYPE  D_LANGEVIN'
+              Write (iunit,'(6x,a)') '&AD_LANGEVIN'
+              Write (iunit,'(8x,a,f8.2)') 'TIMECON_LANGEVIN  ', simulation_data%motion%relax_time_thermostat%value
+              Write (iunit,'(6x,a)') '&END AD_LANGEVIN'
+            ElseIf (Trim(simulation_data%motion%thermostat%type) == 'csvr') Then
+              Write (iunit,'(6x,2a)') 'TYPE  CSVR'
+              Write (iunit,'(6x,a)') '&CSVR'
+              Write (iunit,'(8x,a,f8.2)') 'TIMECON  ', simulation_data%motion%relax_time_thermostat%value
+              Write (iunit,'(6x,a)') '&END CSVR'
+            End If
+            Write (iunit,'(4x,a)') '&END THERMOSTAT'
+            If (Trim(simulation_data%motion%ensemble%type) == 'npt') Then
+              Write (iunit,'(4x,a)') '&BAROSTAT'
+              Write (iunit,'(6x,a,f8.2)') 'PRESSURE [bar] ', simulation_data%motion%pressure%value
+              Write (iunit,'(6x,a,f10.2)') 'TIMECON  [fs]  ', simulation_data%motion%relax_time_barostat%value
+              Write (iunit,'(4x,a)') '&END BAROSTAT'
+            End If
+          Else If (Trim(simulation_data%motion%ensemble%type) == 'nph') Then
+              Write (iunit,'(4x,a)') '&BAROSTAT'
+              Write (iunit,'(6x,a,f8.2)') 'PRESSURE [bar] ', simulation_data%motion%pressure%value
+              Write (iunit,'(6x,a,f10.2)')'TIMECON  [fs]  ', simulation_data%motion%relax_time_barostat%value
+              Write (iunit,'(4x,a)') '&END BAROSTAT'
           End If
-        Else If (Trim(simulation_data%motion%ensemble%type) == 'nph') Then
-            Write (iunit,'(4x,a)') '&BAROSTAT'
-            Write (iunit,'(6x,a,f8.2)') 'PRESSURE [bar] ', simulation_data%motion%pressure%value
-            Write (iunit,'(6x,a,f10.2)')'TIMECON  [fs]  ', simulation_data%motion%relax_time_barostat%value
-            Write (iunit,'(4x,a)') '&END BAROSTAT'
-        End If
-        Write (iunit,'(2x,a)') '&END MD'
-    End If
+          Write (iunit,'(2x,a)') '&END MD'
+      End If
 
-    Write (iunit,'(a)')    ' '
-    Write (iunit,'(a)') '&END MOTION'
+      Write (iunit,'(a)')    ' '
+      Write (iunit,'(a)') '&END MOTION'
+    End If
 
    Close(iunit)
 

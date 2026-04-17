@@ -1,7 +1,7 @@
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! Module with subroutines tools for simulation
 !
-! Copyright: 2022-2024 Ada Lovelace Centre (ALC)
+! Copyright: 2022-2026 Ada Lovelace Centre (ALC)
 !             Scientific Computing Department (SCD)
 !             The Science and Technology Facilities Council (STFC)
 !
@@ -708,52 +708,6 @@ Contains
         ref_database(15)%units=' '
 
         num_ref_data=15
-      End If
-
-     If (Trim(functionality) == 'DL_MG') Then
-
-       ref_database(1)%key='mg_use_cg'
-       ref_database(1)%keytype='logical'
-       ref_database(1)%msn=': if .True., it turns on the conjugate gradient solver to increase&
-                           & stability at expenses of reducing the performance.'
-       ref_database(1)%set_default='False'
-       ref_database(1)%units=' '
-
-       ref_database(2)%key='mg_max_iters_vcycle'
-       ref_database(2)%keytype='integer'
-       ref_database(2)%msn=': maximum number of multigrid V-cycle iterations.'
-       ref_database(2)%set_default='50'
-       ref_database(2)%units=' '
-
-       ref_database(3)%key='mg_vcyc_smoother_iter_pre'
-       ref_database(3)%keytype='integer'
-       ref_database(3)%msn=': sets the number of V-cycle smoother iterations pre-smoothing.&
-                           & Set it to 4 and 8 for difficult systems.'
-       ref_database(3)%set_default='2'
-       ref_database(3)%units=' '
-
-       ref_database(4)%key='mg_vcyc_smoother_iter_post'
-       ref_database(4)%keytype='integer'
-       ref_database(4)%msn=': sets the number of V-cycle smoother iterations post-smoothing.&
-                          & Set it to 4 and 8 for difficult systems.'
-       ref_database(4)%set_default='1'
-       ref_database(4)%units=' '
-
-       ref_database(5)%key='mg_defco_fd_order'
-       ref_database(5)%keytype='integer'
-       ref_database(5)%msn=': sets the discretization order used when solving the P(B)E.&
-                                & Value must be even an integer. Recommended value is 8.'
-       ref_database(5)%set_default='8'
-       ref_database(5)%units=' '
-
-       ref_database(6)%key='mg_max_iters_newton'
-       ref_database(6)%keytype='integer'
-       ref_database(6)%msn=': sets the maximum number of Newton method iterations. Only relevant if&
-                            & solver is set to "full" (&electrolyte). Increase it for difficult systems.'
-       ref_database(6)%set_default='30'
-       ref_database(6)%units=' '
-     
-        num_ref_data=6
       End If
 
     End If

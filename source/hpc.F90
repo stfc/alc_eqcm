@@ -2,7 +2,7 @@
 ! Module that automatically sets up the submission script 
 ! directives for High-Performance-Computing (HPC)
 !
-! Copyright: 2022-2024 Ada Lovelace Centre (ALC)
+! Copyright: 2022-2026 Ada Lovelace Centre (ALC)
 !             Scientific Computing Department (SCD)
 !             The Science and Technology Facilities Council (STFC)
 ! 
@@ -552,24 +552,24 @@ Contains
       End If
       Write (iunit,'(3a)')     '#SBATCH --partition=', Trim(hpc_data%queue%type),      '    # queue (partition)' 
       Write (aux, *) hpc_data%number_mpi_tasks%value
-      Write (iunit,'(2a)') '#SBATCH --ntasks=', Adjustl(Trim(aux))
+      Write (iunit,'(2a)') '#SBATCH --ntasks=', Trim(Adjustl(aux))
       If (hpc_data%number_nodes%fread) Then
         Write (aux, *) hpc_data%number_nodes%value
-        Write (iunit,'(2a)') '#SBATCH --nodes=', Adjustl(Trim(aux))
+        Write (iunit,'(2a)') '#SBATCH --nodes=', Trim(Adjustl(aux))
         If (hpc_data%cpus_per_node%fread) Then
           Write (aux, *) hpc_data%processes_per_node
-          Write (iunit,'(2a)') '#SBATCH --ntasks-per-node=', Adjustl(Trim(aux))
+          Write (iunit,'(2a)') '#SBATCH --ntasks-per-node=', Trim(Adjustl(aux))
         End If 
       End If 
       If (Trim(hpc_data%parallelism_type%type) == 'mpi-openmp') Then      
         Write (aux, *) hpc_data%threads_per_process%value
-        Write (iunit,'(2a)') '#SBATCH --cpus-per-task=', Adjustl(Trim(aux))
+        Write (iunit,'(2a)') '#SBATCH --cpus-per-task=', Trim(Adjustl(aux))
         Write (iunit,'(a)') ' '
-        Write (iunit,'(2a)')   'export OMP_NUM_THREADS=', Adjustl(Trim(aux))
+        Write (iunit,'(2a)')   'export OMP_NUM_THREADS=', Trim(Adjustl(aux))
       End If
       If (hpc_data%mkl%stat) Then
         If (Trim(hpc_data%parallelism_type%type) == 'mpi-openmp') Then      
-          Write (iunit,'(2a)') 'export MKL_NUM_THREADS=', Adjustl(Trim(aux))
+          Write (iunit,'(2a)') 'export MKL_NUM_THREADS=', Trim(Adjustl(aux))
         Else
           Write (iunit,'(a)')  'export MKL_NUM_THREADS=1'
         End If
@@ -699,16 +699,16 @@ Contains
     Do i= 2, 3
       If (input_time(i)<10) Then
         Write (aux,*) input_time(i)
-        chartime(i)='0'//Adjustl(Trim(aux))
+        chartime(i)='0'//Trim(Adjustl(aux))
       Else
         Write (aux,*) input_time(i)
-        chartime(i)=Adjustl(Trim(aux))
+        chartime(i)=Trim(Adjustl(aux))
       End If 
     End Do 
 
     If (input_time(1)>0) Then
       Write (aux,*) input_time(1)
-      chartime(1)=Adjustl(Trim(aux))
+      chartime(1)=Trim(Adjustl(aux))
       timeformat=Trim(chartime(1))//'-'//Trim(chartime(2))//':'//Trim(chartime(3))//':00'
     Else
       timeformat=Trim(chartime(2))//':'//Trim(chartime(3))//':00'

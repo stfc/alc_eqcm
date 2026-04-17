@@ -3,7 +3,7 @@
 ! with CASTEP. This module also warns the user about aspects to take
 ! into consideration when performing simulations
 !
-! Copyright: 2022-2024 Ada Lovelace Centre (ALC)
+! Copyright: 2022-2026 Ada Lovelace Centre (ALC)
 !             Scientific Computing Department (SCD)
 !             The Science and Technology Facilities Council (STFC)
 !
@@ -150,8 +150,9 @@ Contains
     ! DFT part
     Call print_param_file_dft(iunit, ic, net_elements, list_tag, list_number, simulation_data)
     ! Motion part
-    Call print_param_file_motion(iunit, ic, simulation_data)
-
+    If (Trim(simulation_data%simulation%type) /= 'singlepoint') Then
+      Call print_param_file_motion(iunit, ic, simulation_data)
+    End If
 
     simulation_data%set_directives%N0=ic-1
     If (simulation_data%extra_info%stat) Then
@@ -897,10 +898,10 @@ Contains
       End If
     
       If (simulation_data%motion%ion_steps%fread) Then
-        If (simulation_data%motion%ion_steps%value == 1) Then
+        If (simulation_data%motion%ion_steps%value == 0) Then
           simulation_data%simulation%type='singlepoint'   
-          Call info(' ***WARNING: since the number of ionic steps was set to 1, the simulation was changed to SinglePoint', 1)
-        Else If (simulation_data%motion%ion_steps%value == 2) Then
+          Call info(' ***WARNING: since the number of ionic steps was set to 0, the simulation was changed to SinglePoint', 1)
+        Else If (simulation_data%motion%ion_steps%value == 1 .or. simulation_data%motion%ion_steps%value ==2) Then
           Write (messages(1),'(2(1x,a))') Trim(error_motion), &
                                 &' In CASTEP, "ion_steps" for geometry relaxation must be larger than 2. Please change'
           Call info(messages, 1)

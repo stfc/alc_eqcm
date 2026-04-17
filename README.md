@@ -19,33 +19,30 @@ Please cite the following work in publications making use of ALC_EQCM:
 
 2) ALC_EQCM: Automated stoichiometric resolution in electrochemistry through Density Functional Theory aided, Electrochemical Quartz Crystal Microbalance. I. Scivetti and G. Teobaldi. Computational Materials Science 218, 111968, (2023), https://doi.org/10.1016/j.commatsci.2022.111968
 
-Both references are provided in bibtex format within the [***biblio-references***](./biblio-references) folder in the root directory.
-
 ## Structure of files and folders
-ALC_EQCM contains the following relevant set of files and folders (in italic-bold):
+ALC_EQCM contains the following set of files and folders (in italic-bold):
 
 * [***CI-tests***](./CI-tests): contains all the tests in .tar format for testing purposes. There is also a file called *README.txt* with a brief description for each test.
-* [***cmake***](./cmake): contains the specification for the compilation flags depending on the Fortran compiler, including options for debugging.
-* [***manual***](./manual): folder with the user's manual.
 * [***scripts***](./scripts): contains scripts for data processing and transformation of atomistic structures with the *.cif* format
 * [***source***](./source): contains the source code. Files have the *.F90* extension
 * [***tools***](./tools): includes all shell files for building, compiling and testing the code automatically.
 * [***tutorial***](./tutorials): contains the input files for the tutorial examples, which are explained in the section 6 of the manual
+* [ALC_EQCM-manual.pdf](./ALC_EQCM-manual.pdf): user's manual.
 * [CMakeList.txt](./CMakeList.txt): sets the framework for code building and testing with CMake.
 * Jenkinsfile: file with specifications to build and run the testing infrastructure.
 * LICENSE: specification of the BSD 3-Clause License under which ALC_EQCM is registered.
 * README.md: this file.
-* [cmake_building.md](./cmake_building.md): details the steps to build, compile and run tests using the CMake platform.
+* [build_code.md](./build_code.md): details the steps to build, compile and run tests using the CMake platform.
 
 ## Contributors
- * Ivan Scivetti (original author)
- * Gilberto Teobaldi (project management and scientific support)
+ * Ivan Scivetti (author)
+ * Gilberto Teobaldi (scientific support)
 
 ## Getting started  
 ### Depedencies
 The user must have access to the following software:  
 
-* GNU-Fortran (5.4.0) or Intel-Fortran (ifort 16.0.1; ifx 2024.0.0)
+* GNU-Fortran (5.4.0) or Intel-Fortran (ifx 2025.1.1)
 * Cmake (3.1)  
 * Make (3.82)  
 * git (2.7.4)  
@@ -53,10 +50,7 @@ The following two softwares are only needed when working with atomic structures 
 * Python (3.8.10)
 * Atomistic Simulation Environment-ASE (ase-3.23.0b1)
 
-Information in parenthesis indicates the minimum version tested during the development of the code. The specification for the minimum versions is not fully rigorous but indicative, as there could be combinations of other minimum versions that still work. Our tests indicate that versions of Intel compiler older than 16.0.1 exhibit problems and should be avoided.  
-
-IMPORTANT: we have identified serious problems with version 2021.10.0 of ifort, related to Intel bugs when using the INQUIRE function. These problems are not observed for versions 2021.7.0 (and older). Intel seem to have been fixed this
- bug for version 2021.11.0.
+Information in parenthesis indicates the minimum version tested during the development of the code. The specification for the minimum versions is not fully rigorous but indicative, as there could be combinations of other minimum versions that still work.   
 
 ## Getting started
 The user can clone the code locally by executing the following command with the SSH protocol
