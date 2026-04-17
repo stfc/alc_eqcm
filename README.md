@@ -15,7 +15,7 @@ Ada Lovelace Centre does not fully guarantee the code is free of errors and assu
 ## Citing ALC_EQCM
 Please cite the following work in publications making use of ALC_EQCM:
 
-1) Quantitative Resolution of Complex Stoichiometric Changes During Electrochemical Cycling by Density Functional Theory Assisted, Electrochemical Quartz Crystal Microbalance. T-H. Wu; I. Scivetti; J-C. Chen; J-A. Wang; G. Teobaldi, C-C Hu; L.J. Hardwick. ACS Appl. Energy Mater. 3, 4, 3347–3357 (2020), https://doi.org/10.1021/acsaem.9b02386
+1) Quantitative Resolution of Complex Stoichiometric Changes During Electrochemical Cycling by Density Functional Theory Assisted, Electrochemical Quartz Crystal Microbalance. T-H. Wu; I. Scivetti; J-C. Chen; J-A. Wang; G. Teobaldi, C-C Hu; L.J. Hardwick. ACS Appl. Energy Mater. 3, 4, 3347–3357 (2020), https://doi.org/10.1021/acsaem.9b02386  
 
 2) ALC_EQCM: Automated stoichiometric resolution in electrochemistry through Density Functional Theory aided, Electrochemical Quartz Crystal Microbalance. I. Scivetti and G. Teobaldi. Computational Materials Science 218, 111968, (2023), https://doi.org/10.1016/j.commatsci.2022.111968
 
@@ -27,10 +27,11 @@ ALC_EQCM contains the following set of files and folders (in italic-bold):
 * [***source***](./source): contains the source code. Files have the *.F90* extension
 * [***tools***](./tools): includes all shell files for building, compiling and testing the code automatically.
 * [***tutorial***](./tutorials): contains the input files for the tutorial examples, which are explained in the section 6 of the manual
-* [ALC_EQCM-manual.pdf](./ALC_EQCM-manual.pdf): user's manual.
+* [.gitignore](./.gitignore): file to ignore particular files.  
+* [ALC_EQCM-manual.pdf](./ALC_EQCM-manual.pdf): user's manual.  
 * [CMakeList.txt](./CMakeList.txt): sets the framework for code building and testing with CMake.
-* Jenkinsfile: file with specifications to build and run the testing infrastructure.
-* LICENSE: specification of the BSD 3-Clause License under which ALC_EQCM is registered.
+* [Jenkinsfile](./Jenkinsfile): file with specifications to build and run the testing infrastructure.
+* [LICENSE](LICENSE): specification of the BSD 3-Clause License under which ALC_EQCM is registered.
 * README.md: this file.
 * [build_code.md](./build_code.md): details the steps to build, compile and run tests using the CMake platform.
 
