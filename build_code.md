@@ -15,7 +15,7 @@ The following two softwares are only needed when working with atomic structures 
 * Python (3.8.10)
 * Atomistic Simulation Environment-ASE (ase-3.23.0b1)
 
-Information in parenthesis indicates the minimum version tested during the development of the code. The specification for the minimum versions is not fully rigorous but indicative, as there could be combinations of other minimum versions that still work. Our tests indicate that versions of Intel compiler older than 16.0.1 exhibit problems and should be avoided.  
+Information in parenthesis indicates the minimum version tested during the development of the code. The specification for the minimum versions is not fully rigorous but indicative, as there could be combinations of other minimum versions that still work. 
 
 ## Building the code
 In the following, we assume the code has been downloaded to folder ***alc_eqcm*** at the location */home/username/codes*, in the remote machine *wherever* of the account *"username"*. Please refer to file [README.md](./README.md) for instructions to download the code.
