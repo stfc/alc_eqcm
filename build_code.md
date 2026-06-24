@@ -5,7 +5,7 @@ The following notes describe the steps to build **ALC_EQCM** using the [**CMake*
 ## Software required
 The user must have access to the following software:  
 
-* GNU-Fortran (5.4.0) or Intel-Fortran (ifx 2025.1.1)
+* GNU-Fortran (11.2.0) or Intel-Fortran (ifx 2025.1.1)
 * Cmake (3.1)  
 * Make (3.82)  
 * git (2.7.4)  
@@ -15,7 +15,7 @@ The following two softwares are only needed when working with atomic structures 
 * Python (3.8.10)
 * Atomistic Simulation Environment-ASE (ase-3.23.0b1)
 
-Information in parenthesis indicates the minimum version tested during the development of the code. The specification for the minimum versions is not fully rigorous but indicative, as there could be combinations of other minimum versions that still work. 
+Information in parenthesis indicates the minimum version tested during the development of the code. The specification for the minimum versions is not fully rigorous but indicative, as there could be combinations of other minimum versions that still work. Our tests indicate that versions of Intel compiler older than 16.0.1 exhibit problems and should be avoided.  
 
 ## Building the code
 In the following, we assume the code has been downloaded to folder ***alc_eqcm*** at the location */home/username/codes*, in the remote machine *wherever* of the account *"username"*. Please refer to file [README.md](./README.md) for instructions to download the code.
@@ -75,10 +75,9 @@ If the compiler is GNU-Fortran, the pre-defined compilation flags for the *Relea
 ```
 In contrast, if the selected option is *Debug*, the predefined compilation flags are: 
 ```sh
-"-g -Wextra -Wuse-without-only -frecord-gcc-switches -O0 -std=f2008 -pedantic -fbacktrace -fcheck=all -finit-integer=2147483647 -finit-real=snan -finit-logical=true -finit-character=42  -ffpe-trap=invalid,zero,overflow -fdump-core -fstack-protector-all -Wall -pipe"
+"-g -Wextra -Wuse-without-only -frecursive -frecord-gcc-switches -O0 -std=f2018 -pedantic -fbacktrace -fcheck=all -finit-integer=2147483647  
+-finit-real=snan -finit-logical=true -finit-character=42 -finit-derived -ffpe-trap=invalid,zero,overflow -fdump-core -fstack-protector-all -Wall -pipe"
 ```
-for *gFortran* versions older than 6.5. If the compiler version is 7.0 or newer, the flags *-finit-derived* and *-frecursive* are also added to the list above.  
-
 #### Intel-Fortran compiler
 
 For *Intel-Fortran* compiler (ifx), the pre-defined flags for option *Debug* are:
